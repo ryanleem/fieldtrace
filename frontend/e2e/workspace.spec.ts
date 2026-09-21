@@ -119,7 +119,55 @@ test('provider failure is not disguised as a low-evidence success',async({page})
  await mockApi(page,'provider-failure');await page.goto('/');await confirm(page)
  await page.getByLabel('What problem are you seeing?').fill('Fault 5091');await page.getByRole('button',{name:'Run troubleshooting'}).click()
  await expect(page.getByRole('heading',{name:'Troubleshooting service unavailable'})).toBeVisible()
+ await expect(page.locator('.result-title .badge')).toHaveCount(0)
  await expect(page.getByRole('button',{name:'Retry troubleshooting'})).toBeVisible();await expect(page.locator('.cause-title')).toHaveCount(0)
+})
+
+for(const [label,status] of [['quota / rate limit',429],['database unavailable',503],['retrieval exception',500],['provider timeout',504]] as const){
+ test(`${label} preserves inputs and allows retry`,async({page})=>{
+  await mockApi(page);let first=true
+  await page.route('**/troubleshooting/run',route=>{if(first){first=false;return route.fulfill({status,json:{detail:'failure fixture'}})}return route.fallback()})
+  await page.goto('/');await confirm(page);await page.getByLabel('What problem are you seeing?').fill('Fault 5091')
+  await page.getByRole('button',{name:'Run troubleshooting'}).click()
+  await expect(page.getByRole('alert')).toBeVisible();await expect(page.locator('.cause-title')).toHaveCount(0)
+  await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('Fault 5091')
+  expect(await page.evaluate(()=>sessionStorage.getItem('fieldtrace.session'))).toBe(sid)
+  await page.getByRole('button',{name:'Run troubleshooting'}).click();await expect(page.locator('.cause-title')).toBeVisible()
+ })
+}
+
+test('backend disconnect keeps the confirmed session and offers refresh',async({page})=>{
+ await mockApi(page);await page.goto('/');await confirm(page)
+ await page.route('**/troubleshooting/run',r=>r.abort('connectionrefused'))
+ await page.getByLabel('What problem are you seeing?').fill('Fault 5091');await page.getByRole('button',{name:'Run troubleshooting'}).click()
+ await expect(page.getByRole('alert')).toContainText('Cannot reach the backend')
+ await expect(page.getByRole('button',{name:'Refresh session status'})).toBeVisible()
+ await expect(page.getByText('CONFIRMED EQUIPMENT',{exact:true})).toBeVisible()
+})
+
+test('corrupt image rejection retains the queued photo and does not run vision',async({page})=>{
+ const mock=await mockApi(page);await page.goto('/');await confirm(page)
+ await page.route('**/images',r=>r.request().method()==='POST'?r.fulfill({status:422,json:{detail:'Image is corrupt or unreadable'}}):r.fallback())
+ await page.getByLabel('Add equipment photos',{exact:true}).setInputFiles({name:'broken.jpg',mimeType:'image/jpeg',buffer:Buffer.from('not an image')})
+ await page.getByRole('button',{name:'Save photos & inspect visible conditions'}).click()
+ await expect(page.getByRole('alert')).toContainText('corrupt or unreadable');await expect(page.locator('.pending-photo')).toHaveCount(1)
+ expect(mock.calls.filter(c=>c.path.endsWith('/analyze'))).toHaveLength(0)
+})
+
+test('new session clears result, photos, follow-up and measurement draft',async({page})=>{
+ await mockApi(page);await page.goto('/');await confirm(page)
+ await page.getByLabel('What problem are you seeing?').fill('Fault 5091');await page.getByRole('button',{name:'Run troubleshooting'}).click()
+ await page.getByLabel('Update for this session').fill('old answer');await page.getByLabel('Entry type').selectOption('measurement')
+ await page.getByLabel('value',{exact:true}).fill('92')
+ await page.getByLabel('Add equipment photos',{exact:true}).setInputFiles('public/replay-photo-01.jpg')
+ await page.getByRole('button',{name:'Start new troubleshooting session'}).click()
+ await expect(page.locator('.cause-title')).toHaveCount(0);await expect(page.locator('.pending-photo')).toHaveCount(0)
+ await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('')
+ await page.getByLabel('Model text, if known').fill('ACS880-01');await page.getByRole('button',{name:'Re-detect / correct equipment'}).click()
+ await page.getByRole('button',{name:'Confirm equipment',exact:true}).click()
+ await page.getByLabel('What problem are you seeing?').fill('Fault 5091');await page.getByRole('button',{name:'Run troubleshooting'}).click()
+ await expect(page.getByLabel('Entry type')).toHaveValue('answer');await expect(page.getByLabel('Update for this session')).toHaveValue('')
+ await page.getByLabel('Entry type').selectOption('measurement');await expect(page.getByLabel('value',{exact:true})).toHaveValue('')
 })
 test('vision failure retains photo and offers retry without fake findings',async({page})=>{
  await mockApi(page,'vision-failure');await page.goto('/');await confirm(page)

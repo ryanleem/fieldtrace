@@ -44,7 +44,12 @@ For suspected-cause statements, the source must support the possibility; do not 
 certainty from a general manual. Verify actions with all prerequisites and warnings.
 For a question, verify that it is an appropriate source-supported request for information
 without presuming facts or prescribing unsafe work. Never use the original candidate's
-plausibility as proof. revised_text is null except when PARTIAL.''',
+plausibility as proof. A plausible link from corrosion, dust or discoloration to a
+fault is unsupported unless the cited text itself supplies that causal link. Words
+such as "may" do not make an undocumented causal assertion supported. If one sentence
+is documented and another is not, return PARTIAL with only the documented portion;
+never return SUPPORTED while explaining that an assertion is not stated in the sources.
+revised_text is null except when PARTIAL.''',
 }
 
 

@@ -87,6 +87,33 @@ def test_supported_primary_and_provenance():
     assert all(v['status'] == 'SUPPORTED' for v in p.audit['attempts'][0]['verifications'])
 
 
+@pytest.mark.parametrize('revision', [False, True])
+def test_verifier_admitted_gap_cannot_pass_even_after_rewrite(revision):
+    class AdmittedGap:
+        def __init__(self): self.calls = 0
+        def complete(self, stage, payload):
+            self.calls += 1
+            if revision and self.calls == 1:
+                return {'output': dict(status='PARTIAL', explanation='Only a portion follows.', revised_text='Narrower claim')}
+            return {'output': dict(status='SUPPORTED', revised_text=None,
+                explanation='While not explicitly stated in the cited chunks, corrosion may impact signal continuity.')}
+    row=evidence().model_dump(mode='json');cid=row['chunk_id'];log=[]
+    p=Pipeline(AdmittedGap(),Embedder(),Settings(),lambda _:[])
+    assert p.verify('Corrosion may cause this fault.',[cid],{cid:row},log,'primary:rationale') == (None,False)
+    assert log[-1]['status']=='UNSUPPORTED' and log[-1]['provider_status']=='SUPPORTED'
+
+
+def test_admitted_gap_primary_still_uses_only_one_retry():
+    class AdmittedGap(MockLLM):
+        def complete(self, stage, payload):
+            response=super().complete(stage,payload)
+            if stage=='verify':response['output']['explanation']='The possibility is not directly supported by the supplied evidence.'
+            return response
+    p,result=pipeline(AdmittedGap())
+    assert result['confidence']=='LOW' and result['primary_cause'] is None
+    assert len(p.audit['attempts'])==2
+
+
 def test_weak_evidence_skips_candidate_and_asks_targeted_question():
     llm = MockLLM(strength='WEAK')
     _, result = pipeline(llm)

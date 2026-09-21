@@ -3,7 +3,16 @@
 FieldTrace connects equipment identification, visible photo observations and a technician's
 symptom to real ABB manual evidence. Its React workspace shows suspected causes,
 documented checks, confidence, follow-up questions and exact source excerpts.
-Steps 1–5 are implemented; this remains a supervised local prototype.
+Steps 1–5 are implemented, with Step 6 demo polish; this remains a supervised local prototype.
+
+## Why FieldTrace
+
+FieldTrace combines confirmed equipment identity, physical photo observations and
+technician symptoms in a persistent troubleshooting session. Hybrid retrieval finds
+ABB evidence; technical claim verification and uncertainty handling determine what
+can be presented. Exact citations let technicians inspect the source and follow up
+without processing their photos again. [Demo script](DEMO.md) ·
+[Pre-demo and emergency checklist](DEMO-CHECKLIST.md).
 
 The identification catalog supports **ACS880-01, ACS580-01 and ACH580-01**.
 The corpus supports ACS880 troubleshooting and motor-family retrieval, but motor
@@ -180,7 +189,7 @@ With your database and corpus ready, from the repository root:
 .\.venv\Scripts\python.exe -m pytest --integration --corpus -q --basetemp work/pytest-team
 ```
 
-Full baseline: **139 tests** (127 earlier tests, two viewer tests and ten database-configuration tests).
+Full baseline: **142 tests** (127 earlier tests, two viewer tests, ten database-configuration tests and three verifier-gap regressions).
 Integration tests use isolated schemas. Unit-only: `python -m pytest -q`;
 that intentionally skips database/corpus tests.
 
@@ -191,7 +200,7 @@ npm test
 npm run test:e2e
 ```
 
-Frontend: four unit tests and seven browser tests. Browser tests mock API responses
+Frontend: four unit tests and fourteen browser tests. Browser tests mock API responses
 and start Vite if needed. Install Chrome or set CHROME_PATH to your Chromium executable
 (default targets Windows Chrome). Automated tests don't spend API credits.
 Live evaluations are separate opt-in paid runs.

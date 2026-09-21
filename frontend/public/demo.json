@@ -261,6 +261,59 @@
     },
     "source_text": {}
   },
+  "motor": {
+    "title": "Motor uncertainty fixture",
+    "disclosure": "Temporary motor-family fixture for reasoning validation only. Recorded live motor-overheating run with a supplied dust observation; no motor identification or new photo analysis. Relevance was weak, so the pipeline abstained before diagnosis/claim verification.",
+    "equipment": {
+      "session_id": "500e67a6-fcb2-495c-aacb-d24eddede4f4",
+      "confirmed_equipment_id": null,
+      "confirmed_model": "ABB induction motor family (temporary fixture)",
+      "confirmed_equipment_family": "Induction Motors and Generators",
+      "confirmation_status": "FIXTURE",
+      "identification_revision": 1,
+      "ranked_candidates": [],
+      "mismatch_warnings": [],
+      "confidence": null,
+      "raw_ocr_text": ""
+    },
+    "trace": {
+      "session_id": "500e67a6-fcb2-495c-aacb-d24eddede4f4",
+      "revision": 1,
+      "result": {
+        "status": "insufficient_evidence",
+        "message": "The available evidence is insufficient to support a suspected cause.",
+        "sources": [],
+        "conflicts": [],
+        "confidence": "LOW",
+        "next_question": "What temperature was already measured, at which location, and under what operating conditions?",
+        "primary_cause": null,
+        "technical_claims": [],
+        "alternative_causes": [],
+        "missing_information": [],
+        "recommended_actions": []
+      },
+      "reported_symptoms": [
+        "Motor is overheating."
+      ],
+      "follow_up_answers": [],
+      "checks_completed": [],
+      "measurements": [],
+      "retrieved_evidence_history": [
+        {
+          "run_id": "35fb5fda-66ae-40bc-a0e2-db99bcb5d9fc",
+          "status": "insufficient_evidence",
+          "created_at": "2026-09-19T23:46:23.518684",
+          "sources": []
+        }
+      ]
+    },
+    "visual": {
+      "uploaded_images": [],
+      "aggregated_visual_findings": [],
+      "normalized_visual_findings": []
+    },
+    "source_text": {}
+  },
   "visual": {
     "title": "Recorded visible corrosion",
     "disclosure": "Recorded visual evidence from a generic electrical-hardware photograph. This is not an ABB identification or a fresh image analysis.",
