@@ -1,0 +1,348 @@
+{
+  "acs880": {
+    "title": "ACS880 fault 5091",
+    "disclosure": "Recorded live OpenAI validation, replayed locally. No fresh model analysis. The ACS880 answer includes the documented output-role guard replay.",
+    "equipment": {
+      "session_id": "recorded-acs880",
+      "confirmed_equipment_id": "abb-acs880-01",
+      "confirmed_model": "ACS880-01",
+      "confirmed_equipment_family": "ACS880",
+      "confirmation_status": "CONFIRMED",
+      "identification_revision": 1,
+      "ranked_candidates": [],
+      "mismatch_warnings": [],
+      "confidence": "HIGH",
+      "raw_ocr_text": ""
+    },
+    "trace": {
+      "session_id": "d4c6beda-2162-469e-b58a-8dcf394799e7",
+      "revision": 1,
+      "result": {
+        "status": "suspected_cause",
+        "primary_cause": {
+          "label": "Safe torque off circuit signal interruption",
+          "rationale": "Fault 5091 in the ACS880 manual is specified as Safe Torque Off (STO) active due to broken safety circuit signals connected to connector XSTO during start or run.",
+          "claim_ids": [
+            "claim1"
+          ],
+          "citation_chunk_ids": [
+            "939985e3-706b-4601-8a20-301c03799d4b"
+          ]
+        },
+        "alternative_causes": [],
+        "technical_claims": [
+          {
+            "claim_id": "claim1",
+            "text": "Fault code 5091 indicates the Safe Torque Off function is active; safety circuit signals at connector XSTO are broken during start or run.",
+            "citation_chunk_ids": [
+              "939985e3-706b-4601-8a20-301c03799d4b"
+            ]
+          }
+        ],
+        "recommended_actions": [
+          {
+            "action": "Check safe torque off circuit connections at connector XSTO when fault code 5091 occurs to ensure proper connection integrity as per drive hardware manual guidance.",
+            "citation_chunk_ids": [
+              "939985e3-706b-4601-8a20-301c03799d4b"
+            ]
+          },
+          {
+            "action": "Review the setting of parameter 31.22 STO indication run/stop in the drive parameters.",
+            "citation_chunk_ids": [
+              "939985e3-706b-4601-8a20-301c03799d4b"
+            ]
+          }
+        ],
+        "next_question": "What values have you already measured, including units and measurement location?",
+        "question_sources": [],
+        "missing_information": [
+          "Information needed: Verification if safety circuit signals at connector XSTO are intact during start or run."
+        ],
+        "message": "Suspected cause based on the cited documentation; not a confirmed diagnosis.",
+        "confidence": "MEDIUM",
+        "conflicts": [
+          {
+            "relationship": "CONSISTENT",
+            "citation_chunk_ids": [
+              "939985e3-706b-4601-8a20-301c03799d4b",
+              "3d7ae217-e640-40b1-af96-8e40b23952f3",
+              "45c236c3-8a45-44d7-8e58-ab0713e4c746"
+            ]
+          }
+        ],
+        "sources": [
+          {
+            "chunk_id": "939985e3-706b-4601-8a20-301c03799d4b",
+            "document_id": "85229f68-87c9-5314-a4ad-6fb5a6094570",
+            "document_title": "ACS880 Primary Control Program Firmware Manual",
+            "page_number": 525,
+            "printed_page_label": "525",
+            "section_title": "Fault tracing",
+            "source_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf",
+            "citation_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf#page=525",
+            "document_number": "3AUA0000085967",
+            "revision": "V"
+          },
+          {
+            "chunk_id": "3d7ae217-e640-40b1-af96-8e40b23952f3",
+            "document_id": "85229f68-87c9-5314-a4ad-6fb5a6094570",
+            "document_title": "ACS880 Primary Control Program Firmware Manual",
+            "page_number": 275,
+            "printed_page_label": "275",
+            "section_title": "Parameters",
+            "source_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf",
+            "citation_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf#page=275",
+            "document_number": "3AUA0000085967",
+            "revision": "V"
+          },
+          {
+            "chunk_id": "45c236c3-8a45-44d7-8e58-ab0713e4c746",
+            "document_id": "85229f68-87c9-5314-a4ad-6fb5a6094570",
+            "document_title": "ACS880 Primary Control Program Firmware Manual",
+            "page_number": 276,
+            "printed_page_label": "276",
+            "section_title": "Parameters",
+            "source_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf",
+            "citation_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf#page=276",
+            "document_number": "3AUA0000085967",
+            "revision": "V"
+          }
+        ]
+      },
+      "reported_symptoms": [
+        "The drive reports fault code 5091."
+      ],
+      "follow_up_answers": [],
+      "checks_completed": [],
+      "measurements": [],
+      "retrieved_evidence_history": [
+        {
+          "run_id": "13c1cac0-5faa-4935-9ca2-0ead2e989d4a",
+          "status": "suspected_cause",
+          "created_at": "2026-09-20T00:44:02.523154",
+          "sources": [
+            {
+              "chunk_id": "939985e3-706b-4601-8a20-301c03799d4b",
+              "revision": "V",
+              "source_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf",
+              "document_id": "85229f68-87c9-5314-a4ad-6fb5a6094570",
+              "page_number": 525,
+              "citation_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf#page=525",
+              "section_title": "Fault tracing",
+              "document_title": "ACS880 Primary Control Program Firmware Manual",
+              "document_number": "3AUA0000085967",
+              "printed_page_label": "525"
+            },
+            {
+              "chunk_id": "3d7ae217-e640-40b1-af96-8e40b23952f3",
+              "revision": "V",
+              "source_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf",
+              "document_id": "85229f68-87c9-5314-a4ad-6fb5a6094570",
+              "page_number": 275,
+              "citation_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf#page=275",
+              "section_title": "Parameters",
+              "document_title": "ACS880 Primary Control Program Firmware Manual",
+              "document_number": "3AUA0000085967",
+              "printed_page_label": "275"
+            },
+            {
+              "chunk_id": "45c236c3-8a45-44d7-8e58-ab0713e4c746",
+              "revision": "V",
+              "source_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf",
+              "document_id": "85229f68-87c9-5314-a4ad-6fb5a6094570",
+              "page_number": 276,
+              "citation_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf#page=276",
+              "section_title": "Parameters",
+              "document_title": "ACS880 Primary Control Program Firmware Manual",
+              "document_number": "3AUA0000085967",
+              "printed_page_label": "276"
+            }
+          ]
+        }
+      ]
+    },
+    "visual": {
+      "uploaded_images": [],
+      "aggregated_visual_findings": [],
+      "normalized_visual_findings": []
+    },
+    "source_text": {
+      "939985e3-706b-4601-8a20-301c03799d4b": {
+        "chunk_id": "939985e3-706b-4601-8a20-301c03799d4b",
+        "document_id": "85229f68-87c9-5314-a4ad-6fb5a6094570",
+        "document_title": "ACS880 Primary Control Program Firmware Manual",
+        "page_number": 525,
+        "printed_page_label": "525",
+        "section_title": "Fault tracing",
+        "source_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf",
+        "citation_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf#page=525",
+        "document_number": "3AUA0000085967",
+        "revision": "V",
+        "chunk_text": "Table columns: Code (hex) | Fault | Cause | What to do\n5091 | Safe torque off\nProgrammable fault: 31.22\nSTO indication run/stop | Safe torque off function is\nactive, i.e. safety circuit\nsignal(s) connected to\nconnector XSTO is broken\nduring start or run. | Check safe torque off circuit connections.\nFor more information, see appropriate\ndrive hardware manual and description of\nparameter 31.22 STO indication run/stop\n(page 275)."
+      },
+      "3d7ae217-e640-40b1-af96-8e40b23952f3": {
+        "chunk_id": "3d7ae217-e640-40b1-af96-8e40b23952f3",
+        "document_id": "85229f68-87c9-5314-a4ad-6fb5a6094570",
+        "document_title": "ACS880 Primary Control Program Firmware Manual",
+        "page_number": 275,
+        "printed_page_label": "275",
+        "section_title": "Parameters",
+        "source_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf",
+        "citation_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf#page=275",
+        "document_number": "3AUA0000085967",
+        "revision": "V",
+        "chunk_text": "Table columns: No. Name/Value | Description | Def/FbEq16\nFault/Warning | Inputs Indication\nIN1 IN2 Running Stopped\nFault 5091 Safe torque Warning A5A0 Safe\n0 0\noff torque off\nWarning A5A0 Safe\nFaults 5091 Safe\ntorque off and fault\n0 1 torque off and FA81\nFA81 Safe torque off 1\nSafe torque off 1 loss\nloss\nWarning A5A0 Safe\nFaults 5091 Safe\ntorque off and fault\n1 0 torque off and FA82\nFA82 Safe torque off 2\nSafe torque off 2 loss\nloss\n1 1 (Normal operation) | 1"
+      },
+      "45c236c3-8a45-44d7-8e58-ab0713e4c746": {
+        "chunk_id": "45c236c3-8a45-44d7-8e58-ab0713e4c746",
+        "document_id": "85229f68-87c9-5314-a4ad-6fb5a6094570",
+        "document_title": "ACS880 Primary Control Program Firmware Manual",
+        "page_number": 276,
+        "printed_page_label": "276",
+        "section_title": "Parameters",
+        "source_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf",
+        "citation_url": "https://library.e.abb.com/public/b24019aa640f45bf83a14f04f53691fe/EN_ACS880_Primary_FW_manual_V_A4.pdf#page=276",
+        "document_number": "3AUA0000085967",
+        "revision": "V",
+        "chunk_text": "Table columns: No. Name/Value | Description | Def/FbEq16\nFault/Event | Inputs Indication\nIN1 IN2 Running Stopped\nFault 5091 Safe torque\n0 0 Event B5A0 STO event\noff\nFaults 5091 Safe Event B5A0 STO event\n0 1 torque off and FA81 and fault FA81 Safe\nSafe torque off 1 loss torque off 1 loss\nFaults 5091 Safe Event B5A0 STO event\n1 0 torque off and FA82 and fault FA82 Safe\nSafe torque off 2 loss torque off 2 loss\n1 1 (Normal operation) | 2"
+      }
+    }
+  },
+  "weak": {
+    "title": "Weak-evidence ACS880 example",
+    "disclosure": "Recorded live OpenAI validation, replayed locally. No fresh model analysis.",
+    "equipment": {
+      "session_id": "recorded-acs880",
+      "confirmed_equipment_id": "abb-acs880-01",
+      "confirmed_model": "ACS880-01",
+      "confirmed_equipment_family": "ACS880",
+      "confirmation_status": "CONFIRMED",
+      "identification_revision": 1,
+      "ranked_candidates": [],
+      "mismatch_warnings": [],
+      "confidence": "HIGH",
+      "raw_ocr_text": ""
+    },
+    "trace": {
+      "session_id": "3d75d15f-071e-4385-9a61-e0e0fa24307b",
+      "revision": 1,
+      "result": {
+        "status": "insufficient_evidence",
+        "message": "The available evidence is insufficient to support a suspected cause.",
+        "sources": [],
+        "conflicts": [],
+        "confidence": "LOW",
+        "next_question": "What values have you already measured, including units and measurement location?",
+        "primary_cause": null,
+        "technical_claims": [],
+        "alternative_causes": [],
+        "missing_information": [],
+        "recommended_actions": []
+      },
+      "reported_symptoms": [
+        "Something seems wrong."
+      ],
+      "follow_up_answers": [],
+      "checks_completed": [],
+      "measurements": [],
+      "retrieved_evidence_history": [
+        {
+          "run_id": "e9ace570-2d2d-4d59-9178-71c43a6e90b5",
+          "status": "insufficient_evidence",
+          "created_at": "2026-09-19T23:36:11.744769",
+          "sources": []
+        }
+      ]
+    },
+    "visual": {
+      "uploaded_images": [],
+      "aggregated_visual_findings": [],
+      "normalized_visual_findings": []
+    },
+    "source_text": {}
+  },
+  "visual": {
+    "title": "Recorded visible corrosion",
+    "disclosure": "Recorded visual evidence from a generic electrical-hardware photograph. This is not an ABB identification or a fresh image analysis.",
+    "equipment": {
+      "session_id": "recorded-generic-photo",
+      "confirmed_equipment_id": null,
+      "confirmed_model": null,
+      "confirmed_equipment_family": null,
+      "confirmation_status": "UNCONFIRMED",
+      "identification_revision": 1,
+      "ranked_candidates": [],
+      "mismatch_warnings": [],
+      "confidence": null,
+      "raw_ocr_text": ""
+    },
+    "trace": {
+      "session_id": "3d75d15f-071e-4385-9a61-e0e0fa24307b",
+      "revision": 1,
+      "result": {
+        "status": "not_run",
+        "message": "The available evidence is insufficient to support a suspected cause.",
+        "sources": [],
+        "conflicts": [],
+        "confidence": "LOW",
+        "next_question": "",
+        "primary_cause": null,
+        "technical_claims": [],
+        "alternative_causes": [],
+        "missing_information": [],
+        "recommended_actions": []
+      },
+      "reported_symptoms": [],
+      "follow_up_answers": [],
+      "checks_completed": [],
+      "measurements": [],
+      "retrieved_evidence_history": []
+    },
+    "visual": {
+      "uploaded_images": [
+        {
+          "id": "recorded-photo-01",
+          "equipment_id": null,
+          "original_filename": "photo-01.jpg",
+          "view_label": "close_up",
+          "user_note": null,
+          "analysis_status": "completed"
+        }
+      ],
+      "aggregated_visual_findings": [
+        {
+          "issue_type": "corrosion",
+          "location": "middle right, on two metal strips",
+          "description": "visible greenish corrosion on metal strips",
+          "severity": "medium",
+          "visual_confidence": "high",
+          "bounding_region": null,
+          "id": "recorded-finding-0",
+          "equipment_id": null,
+          "supporting_image_ids": [
+            "recorded-photo-01"
+          ]
+        },
+        {
+          "issue_type": "surface_wear",
+          "location": "top left, on the socket outlet surfaces",
+          "description": "visible surface wear and discoloration on socket outlet surfaces",
+          "severity": "medium",
+          "visual_confidence": "high",
+          "bounding_region": null,
+          "id": "recorded-finding-1",
+          "equipment_id": null,
+          "supporting_image_ids": [
+            "recorded-photo-01"
+          ]
+        }
+      ],
+      "normalized_visual_findings": []
+    },
+    "source_text": {},
+    "image_urls": {
+      "recorded-photo-01": "/replay-photo-01.jpg"
+    },
+    "attribution": "Photo: Corroded Soviet extension cord.jpg — Dmitry G, CC BY-SA 3.0. Source: https://commons.wikimedia.org/wiki/File:Corroded_Soviet_extension_cord.jpg. Wikimedia-provided 1920px thumbnail; no other changes."
+  }
+}

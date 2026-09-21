@@ -1,0 +1,143 @@
+{
+  "title": "prototype qualitative visual-inspection evaluation",
+  "scope": "Seven openly licensed real electrical-hardware photographs. Generic components, not ABB identification or field validation. Broad non-exhaustive labels; no ground truth for operational condition. Labels and source titles are never passed to the vision provider.",
+  "images": [
+    {
+      "title": "Corroded Soviet extension cord.jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Corroded_Soviet_extension_cord.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ca/Corroded_Soviet_extension_cord.jpg/1920px-Corroded_Soviet_extension_cord.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "original_url": "https://upload.wikimedia.org/wikipedia/commons/c/ca/Corroded_Soviet_extension_cord.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "license": "CC BY-SA 3.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/3.0",
+      "author": "Dmitry G",
+      "filename": "photo-01.jpg",
+      "sha256": "8d52ba80237e75b7c70ae7610248a47a7b0682cb5e8fc81d46c52a055a9ba339",
+      "modifications": "Wikimedia-provided 1920px thumbnail; no other changes.",
+      "expected_issue_types": [
+        "corrosion",
+        "discoloration"
+      ],
+      "annotation": "Contact strips show mottled dark and greenish deposits; composite photograph includes disassembly. Loose ends are not evidence of a missing component.",
+      "view_label": "close_up",
+      "labeler": "Codex visual review of downloaded photograph before model evaluation",
+      "retrieved_at": "2026-09-11"
+    },
+    {
+      "title": "Ethernet cable closeup.JPG",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Ethernet_cable_closeup.JPG",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fd/Ethernet_cable_closeup.JPG/1920px-Ethernet_cable_closeup.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "original_url": "https://upload.wikimedia.org/wikipedia/commons/f/fd/Ethernet_cable_closeup.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "license": "CC BY-SA 3.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/3.0",
+      "author": "Dmitry \"EthernetCable\" Bulatovi\u0107",
+      "filename": "photo-02.jpg",
+      "sha256": "b401a3ac8f2785ccfe1d635e8125253bfae56ec58e31663c09bf76833ea74a4c",
+      "modifications": "Wikimedia-provided 1920px thumbnail; no other changes.",
+      "expected_issue_types": [
+        "crack",
+        "damaged_housing"
+      ],
+      "annotation": "Visible split/irregular fracture line across clear connector shell near the lower edge; do not infer electrical performance.",
+      "view_label": "close_up",
+      "labeler": "Codex visual review of downloaded photograph before model evaluation",
+      "retrieved_at": "2026-09-11"
+    },
+    {
+      "title": "Dusty computer cooling fan.JPG",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Dusty_computer_cooling_fan.JPG",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/63/Dusty_computer_cooling_fan.JPG/1920px-Dusty_computer_cooling_fan.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "original_url": "https://upload.wikimedia.org/wikipedia/commons/6/63/Dusty_computer_cooling_fan.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "license": "CC BY-SA 3.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/3.0",
+      "author": "McZusatz",
+      "filename": "photo-03.jpg",
+      "sha256": "bd20a66250cd1fc7411abcd0ef88ab26747d8ee1fb14b6c87d57d1e91253e858",
+      "modifications": "Wikimedia-provided 1920px thumbnail; no other changes.",
+      "expected_issue_types": [
+        "dust_buildup"
+      ],
+      "annotation": "Dense pale dust on fan blades and hub.",
+      "view_label": "close_up",
+      "labeler": "Codex visual review of downloaded photograph before model evaluation",
+      "retrieved_at": "2026-09-11"
+    },
+    {
+      "title": "Sunon dust proof and water proof cooling fan 20140606.jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Sunon_dust_proof_and_water_proof_cooling_fan_20140606.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b4/Sunon_dust_proof_and_water_proof_cooling_fan_20140606.jpg/1920px-Sunon_dust_proof_and_water_proof_cooling_fan_20140606.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "original_url": "https://upload.wikimedia.org/wikipedia/commons/b/b4/Sunon_dust_proof_and_water_proof_cooling_fan_20140606.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "license": "CC BY-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/2.0",
+      "author": "Devan Hsu",
+      "filename": "photo-04.jpg",
+      "sha256": "eb631280ce39fc130686badd465db02d9f792c8b4ac428991e8be0778229d6aa",
+      "modifications": "Wikimedia-provided 1920px thumbnail; no other changes.",
+      "expected_issue_types": [],
+      "annotation": "Fan in a trade-show water display; no clear physical abnormality visible; blur and reflections limit visibility. Water in the display is not leakage.",
+      "view_label": "front",
+      "labeler": "Codex visual review of downloaded photograph before model evaluation",
+      "retrieved_at": "2026-09-11"
+    },
+    {
+      "title": "12v output connector on old broken tractor undefined.jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:12v_output_connector_on_old_broken_tractor_undefined.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b9/12v_output_connector_on_old_broken_tractor_undefined.jpg/1920px-12v_output_connector_on_old_broken_tractor_undefined.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "original_url": "https://upload.wikimedia.org/wikipedia/commons/b/b9/12v_output_connector_on_old_broken_tractor_undefined.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "license": "CC BY 2.0",
+      "license_url": "https://creativecommons.org/licenses/by/2.0",
+      "author": "Shixart1985",
+      "filename": "photo-05.jpg",
+      "sha256": "f34bdb847a8505f8d11ae76b8e902a92457c4200d5798422f5a03cfe103256c9",
+      "modifications": "Wikimedia-provided 1920px thumbnail; no other changes.",
+      "expected_issue_types": [
+        "corrosion",
+        "surface_wear"
+      ],
+      "annotation": "Orange-brown patches and worn coating on metal bracket beside 12V socket; dust on surfaces. Title does not establish the connector is broken.",
+      "view_label": "close_up",
+      "labeler": "Codex visual review of downloaded photograph before model evaluation",
+      "retrieved_at": "2026-09-11"
+    },
+    {
+      "title": "P6 2014-01-16 Schwelbrand.jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:P6_2014-01-16_Schwelbrand.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1b/P6_2014-01-16_Schwelbrand.jpg/1920px-P6_2014-01-16_Schwelbrand.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "original_url": "https://upload.wikimedia.org/wikipedia/commons/1/1b/P6_2014-01-16_Schwelbrand.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "license": "CC BY-SA 3.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/3.0",
+      "author": "Sumpfchiller",
+      "filename": "photo-06.jpg",
+      "sha256": "3c77dcba0cc7a55c70a50693c384820b8a05c3387ea50c90d542f7cb08d03e6c",
+      "modifications": "Wikimedia-provided 1920px thumbnail; no other changes.",
+      "expected_issue_types": [
+        "burn_mark",
+        "discoloration",
+        "damaged_housing"
+      ],
+      "annotation": "Blackened and deformed material at upper-right terminal region; yellow-brown marks on surrounding surface. Cause unknown from image.",
+      "view_label": "close_up",
+      "labeler": "Codex visual review of downloaded photograph before model evaluation",
+      "retrieved_at": "2026-09-11"
+    },
+    {
+      "filename": "photo-07.jpg",
+      "title": "Frayed and Broken MacBook Pro Charger Cable (16868118774).jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Frayed_and_Broken_MacBook_Pro_Charger_Cable_(16868118774).jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/71/Frayed_and_Broken_MacBook_Pro_Charger_Cable_%2816868118774%29.jpg/1920px-Frayed_and_Broken_MacBook_Pro_Charger_Cable_%2816868118774%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "original_url": "https://upload.wikimedia.org/wikipedia/commons/7/71/Frayed_and_Broken_MacBook_Pro_Charger_Cable_%2816868118774%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "author": "Tony Webster from Minneapolis, Minnesota, United States",
+      "license": "CC BY 2.0",
+      "license_url": "https://creativecommons.org/licenses/by/2.0",
+      "sha256": "ddcd9fb81563b25f569f5c00b4f74901cceeb5562858449bd1f12606a2818221",
+      "modifications": "Wikimedia-provided thumbnail; no other changes.",
+      "expected_issue_types": [
+        "damaged_cable",
+        "damaged_insulation"
+      ],
+      "annotation": "Frayed outer cable cover near connector; confirm against photograph before evaluation.",
+      "view_label": "close_up",
+      "labeler": "Codex visual review of downloaded photograph before model evaluation",
+      "retrieved_at": "2026-09-11"
+    }
+  ]
+}

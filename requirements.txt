@@ -1,0 +1,17 @@
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+SQLAlchemy>=2.0.36,<3
+psycopg[binary]>=3.2,<4
+pgvector>=0.3.6,<1
+PyMuPDF>=1.25,<2
+pypdf>=5,<7
+sentence-transformers==3.4.1
+transformers==4.49.0
+torch==2.6.0
+pydantic-settings>=2.7,<3
+python-dotenv>=1,<2
+httpx>=0.28,<1
+pytest>=8,<10
+rapidocr-onnxruntime==1.4.4
+python-multipart>=0.0.20,<1
+Pillow>=10,<13

@@ -1,0 +1,67 @@
+# Private local configuration; keep reviewed examples.
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+.aws/
+.ssh/
+
+# Python / tooling
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
+*.egg-info/
+.cache/
+
+# JavaScript / build / browser results
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+test-results/
+playwright-report/
+
+# Local services, uploads and generated artifacts
+work/
+data/uploads/
+data/manuals/**/*.pdf
+data/manuals/*.pdf
+data/processed/*
+!data/processed/.gitkeep
+data/evaluation/*.json
+!data/evaluation/manifest.json
+data/evaluation/ui/
+pgdata/
+postgres-data/
+*.db
+*.sqlite*
+*.dump
+*.backup
+
+# Machine/editor/temporary files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
+*.temp
+*.part
+*.swp
+*~
+execution-check.txt

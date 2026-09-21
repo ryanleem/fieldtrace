@@ -1,0 +1,8 @@
+[
+  {"request": {"query": "An ABB motor is overheating. What should I inspect?", "equipment_family": "Induction Motors and Generators", "top_k": 5}},
+  {"request": {"query": "What maintenance should be performed on an ABB induction motor?", "equipment_family": "Induction Motors and Generators", "top_k": 5}},
+  {"request": {"query": "How should vibration be monitored on an ABB motor?", "equipment_family": "Induction Motors and Generators", "top_k": 5}},
+  {"request": {"query": "ACS880 fault tracing", "equipment_model": "ACS880", "top_k": 5}},
+  {"request": {"query": "ACS880 A4F6 IGBT temperature", "equipment_model": "ACS880", "top_k": 5}, "source_check": "Actual warning table on physical PDF page 503, Rev V"},
+  {"request": {"query": "A4F6", "equipment_model": "ACS880", "top_k": 5}, "source_check": "Exact identifier read from physical PDF page 503"}
+]

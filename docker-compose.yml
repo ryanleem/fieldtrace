@@ -1,0 +1,18 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: guardian
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your private .env}
+      POSTGRES_DB: guardian
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - guardian_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guardian -d guardian"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  guardian_pgdata:

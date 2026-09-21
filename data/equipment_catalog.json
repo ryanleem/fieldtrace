@@ -1,0 +1,30 @@
+{
+  "label": "Prototype equipment catalog for demo/testing.",
+  "version": 1,
+  "equipment": [
+    {
+      "id": "abb-acs880-01", "manufacturer": "ABB", "equipment_family": "ACS880",
+      "model_name": "ACS880-01", "model_number_pattern": "^ACS880-01(?:-[A-Z0-9]+)*(?:\\+[A-Z0-9]+)*$",
+      "product_type": "wall-mounted industrial drive", "aliases": ["ACS88001"],
+      "voltage_range": null, "current_range": null, "power_range": null,
+      "source_url": "https://www.abb.com/global/en/areas/motion/drives/low-voltage-ac-drives/industrial-drives/acs880-single-drives/acs880-01",
+      "related_document_number": "3AUA0000085967", "retrieval_model": "ACS880", "retrieval_family": "ACS880 Drives"
+    },
+    {
+      "id": "abb-acs580-01", "manufacturer": "ABB", "equipment_family": "ACS580",
+      "model_name": "ACS580-01", "model_number_pattern": "^ACS580-01(?:-[A-Z0-9]+)*(?:\\+[A-Z0-9]+)*$",
+      "product_type": "wall-mounted general purpose drive", "aliases": ["ACS58001"],
+      "voltage_range": null, "current_range": null, "power_range": null,
+      "source_url": "https://www.abb.com/global/en/areas/motion/drives/low-voltage-ac-drives/general-purpose-drives/acs580/acs580-01",
+      "related_document_number": null, "retrieval_model": "ACS580", "retrieval_family": "ACS580 Drives"
+    },
+    {
+      "id": "abb-ach580-01", "manufacturer": "ABB", "equipment_family": "ACH580",
+      "model_name": "ACH580-01", "model_number_pattern": "^ACH580-01(?:-[A-Z0-9]+)*(?:\\+[A-Z0-9]+)*$",
+      "product_type": "wall-mounted HVAC drive", "aliases": ["ACH58001"],
+      "voltage_range": null, "current_range": null, "power_range": null,
+      "source_url": "https://www.abb.com/global/en/areas/motion/drives/low-voltage-ac-drives/hvacr-drives/ach580/ach580-01",
+      "related_document_number": null, "retrieval_model": "ACH580", "retrieval_family": "ACH580 Drives"
+    }
+  ]
+}
