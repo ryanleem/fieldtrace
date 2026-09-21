@@ -55,6 +55,95 @@ async function confirm(page:Page){
  await page.getByRole('button',{name:'Confirm equipment',exact:true}).click()
  await expect(page.getByText('CONFIRMED EQUIPMENT',{exact:true})).toBeVisible()
 }
+for(const [label,value] of [['What problem are you seeing?','Drive shows fault 5091'],['Model text, if known','ABB ACS880-01']]){
+ test(`fresh page allows typing ${label} without a session`,async({page})=>{
+  const mock=await mockApi(page);await page.goto('/')
+  await expect(page.getByLabel(label)).toBeEnabled();await page.getByLabel(label).fill(value)
+  await expect(page.getByLabel(label)).toHaveValue(value);expect(mock.calls).toHaveLength(0)
+  await expect(page.getByRole('button',{name:'Run troubleshooting'})).toBeDisabled()
+  await expect(page.getByText('Confirm the equipment model before running troubleshooting.',{exact:true})).toBeVisible()
+ })
+}
+
+test('fresh photo selection needs no Start New Session or backend request',async({page})=>{
+ const mock=await mockApi(page);await page.goto('/')
+ await page.getByLabel('Add equipment photos',{exact:true}).setInputFiles('public/replay-photo-01.jpg')
+ await expect(page.locator('.pending-photo')).toHaveCount(1)
+ await page.getByLabel('View for replay-photo-01.jpg').selectOption('nameplate')
+ await page.getByLabel('Photo note').fill('Inspect this area');expect(mock.calls).toHaveLength(0)
+})
+
+test('detect creates one session lazily, preserves drafts, and gates run until confirmation',async({page})=>{
+ const mock=await mockApi(page);await page.goto('/')
+ await page.getByLabel('What problem are you seeing?').fill('Drive shows fault 5091')
+ await page.getByLabel('Model text, if known').fill('ABB ACS880-01')
+ await page.getByLabel('Add equipment photos',{exact:true}).setInputFiles('public/replay-photo-01.jpg')
+ await page.getByLabel('View for replay-photo-01.jpg').selectOption('nameplate')
+ await page.getByRole('button',{name:'Detect equipment / read nameplate'}).click()
+ await expect(page.getByRole('button',{name:'Confirm equipment',exact:true})).toBeVisible()
+ await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('Drive shows fault 5091')
+ await expect(page.getByLabel('Model text, if known')).toHaveValue('ABB ACS880-01')
+ await expect(page.locator('.pending-photo')).toHaveCount(1)
+ await expect(page.getByRole('button',{name:'Run troubleshooting'})).toBeDisabled()
+ expect(mock.calls[0]).toMatchObject({path:'/sessions',method:'POST'})
+ const identify=mock.calls.find(c=>c.path.endsWith('/equipment/identify'))!
+ expect(identify.path).toBe(`/sessions/${sid}/equipment/identify`)
+ expect(identify.body).toContain('ABB ACS880-01');expect(identify.body).toContain('replay-photo-01.jpg')
+ await page.getByRole('button',{name:'Confirm equipment',exact:true}).click()
+ await expect(page.getByRole('button',{name:'Run troubleshooting'})).toBeEnabled()
+ await page.getByRole('button',{name:'Run troubleshooting'}).click();await expect(page.locator('.cause-title')).toBeVisible()
+ expect(mock.calls.filter(c=>c.path==='/sessions'&&c.method==='POST')).toHaveLength(1)
+ expect(mock.calls.some(c=>c.path.includes('/sessions//'))).toBe(false)
+ expect(mock.trace.reported_symptoms).toEqual(['Drive shows fault 5091'])
+})
+
+test('failed lazy session creation preserves text/photos and can be retried',async({page})=>{
+ const mock=await mockApi(page);let creations=0
+ await page.route('**/api/sessions',route=>++creations===1?route.fulfill({status:503,json:{detail:'unavailable'}}):route.fallback())
+ await page.goto('/');await page.getByLabel('What problem are you seeing?').fill('Fault 5091')
+ await page.getByLabel('Model text, if known').fill('ACS880-01')
+ await page.getByLabel('Add equipment photos',{exact:true}).setInputFiles('public/replay-photo-01.jpg')
+ await page.getByRole('button',{name:'Detect equipment / read nameplate'}).click()
+ await expect(page.getByRole('alert')).toBeVisible()
+ await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('Fault 5091')
+ await expect(page.getByLabel('Model text, if known')).toHaveValue('ACS880-01')
+ await expect(page.locator('.pending-photo')).toHaveCount(1)
+ expect(await page.evaluate(()=>sessionStorage.getItem('fieldtrace.session'))).toBeNull()
+ expect(mock.calls.some(c=>c.path.includes('/equipment/identify'))).toBe(false)
+ await page.getByRole('button',{name:'Detect equipment / read nameplate'}).click()
+ await expect(page.getByRole('button',{name:'Confirm equipment',exact:true})).toBeVisible();expect(creations).toBe(2)
+})
+
+test('concurrent detect/reset clicks cannot create multiple sessions',async({page})=>{
+ const mock=await mockApi(page);let creations=0
+ let release!:()=>void
+ const held=new Promise<void>(resolve=>{release=resolve})
+ await page.route('**/api/sessions',async route=>{creations++;await held;await route.fallback()})
+ await page.goto('/');await page.getByLabel('Model text, if known').fill('ACS880-01')
+ // Same tick: before React renders disabled buttons.
+ await page.getByRole('button',{name:'Detect equipment / read nameplate'}).evaluate((button:HTMLButtonElement)=>{
+  button.click();button.click();document.querySelector<HTMLButtonElement>('.new-session')!.click()
+ })
+ await expect.poll(()=>creations).toBe(1)
+ await expect(page.getByRole('button',{name:'Start new troubleshooting session'})).toBeDisabled()
+ release();await expect(page.getByRole('button',{name:'Confirm equipment',exact:true})).toBeVisible()
+ expect(creations).toBe(1);expect(mock.calls.filter(c=>c.path.endsWith('/equipment/identify'))).toHaveLength(1)
+})
+
+test('explicit new session resets fresh drafts only after successful creation',async({page})=>{
+ await mockApi(page);let first=true
+ await page.route('**/api/sessions',route=>{if(first){first=false;return route.fulfill({status:503,json:{detail:'unavailable'}})}return route.fallback()})
+ await page.goto('/');await page.getByLabel('Model text, if known').fill('ACS880-01')
+ await page.getByLabel('What problem are you seeing?').fill('Fault 5091')
+ await page.getByLabel('Add equipment photos',{exact:true}).setInputFiles('public/replay-photo-01.jpg')
+ await page.getByRole('button',{name:'Start new troubleshooting session'}).click()
+ await expect(page.getByRole('alert')).toBeVisible();await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('Fault 5091')
+ await page.getByRole('button',{name:'Start new troubleshooting session'}).click()
+ await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('')
+ await expect(page.getByLabel('Model text, if known')).toHaveValue('');await expect(page.locator('.pending-photo')).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'Run troubleshooting'})).toBeDisabled()
+})
+
 test('complete multi-photo, identification, result, citation and follow-up workflow',async({page})=>{
  const mock=await mockApi(page);await page.goto('/')
  await page.getByRole('button',{name:'Start new troubleshooting session'}).click()

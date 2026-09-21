@@ -13,6 +13,9 @@ function SectionTitle({number,title,detail}:{number:string;title:string;detail?:
 
 export default function App(){
   const [sid,setSid]=useState(()=>demo?'':sessionStorage.getItem('fieldtrace.session')||'')
+  const sessionId=useRef(sid)
+  const sessionCreation=useRef<Promise<string>|null>(null)
+  const working=useRef(false)
   const [equipment,setEquipment]=useState<Equipment|null>(null)
   const [visual,setVisual]=useState<Visual>(emptyVisual)
   const [trace,setTrace]=useState<Trace|null>(null)
@@ -35,16 +38,35 @@ export default function App(){
   const findings=visual.aggregated_visual_findings.filter(f=>f.equipment_id===equipment?.confirmed_equipment_id)
   const newestRun=trace?.retrieved_evidence_history.at(-1)?.run_id
   const addEvent=(event:string)=>setEvents(old=>[...old,event])
-  async function refresh(id=sid){
+  async function createSession(){
+    const eq=await request<Equipment>('/sessions',{method:'POST'})
+    sessionId.current=eq.session_id
+    sessionStorage.setItem('fieldtrace.session',eq.session_id)
+    setSid(eq.session_id);setEquipment(eq)
+    return eq.session_id
+  }
+  async function ensureSession():Promise<string>{
+    if(demo)throw new Error('Recorded replay does not create live sessions.')
+    if(sessionId.current)return sessionId.current
+    // Share an in-flight creation and return the ID directly: React state updates
+    // are asynchronous, so callers must not read their old sid closure afterward.
+    if(!sessionCreation.current){
+      sessionCreation.current=createSession().finally(()=>{sessionCreation.current=null})
+    }
+    return sessionCreation.current
+  }
+  async function refresh(id=sessionId.current){
     if(!id||demo)return
     const [eq,v,t]=await Promise.all([request<Equipment>(`/sessions/${id}/equipment`),request<Visual>(`/sessions/${id}/visual-findings`),request<Trace>(`/sessions/${id}/troubleshooting`)])
     setEquipment(eq);setMatch(eq.confirmed_equipment_id||eq.ranked_candidates[0]?.candidate_id||'');setVisual(v);setTrace(t)
     return {eq,v,t}
   }
   async function work(label:string,operation:()=>Promise<void>){
-    if(busy)return
+    // Lock synchronously, before React renders disabled buttons, including reset.
+    if(working.current)return
+    working.current=true
     setBusy(label);setError('');setNotice('')
-    try{await operation()}catch(e){setError(e instanceof Error?e.message:'The request failed. Your workspace is retained.')}finally{setBusy('')}
+    try{await operation()}catch(e){setError(e instanceof Error?e.message:'The request failed. Your workspace is retained.')}finally{working.current=false;setBusy('')}
   }
   useEffect(()=>{if(sid&&!demo)void work('Restoring session…',async()=>{await refresh(sid)})},[]) // restored once; mutations refresh explicitly
   useEffect(()=>()=>{for(const p of pendingRef.current)URL.revokeObjectURL(p.url)},[])
@@ -57,9 +79,8 @@ export default function App(){
   }
   function resetReplay(){resetDrafts();setReplay(null);setEquipment(null);setVisual(emptyVisual);setTrace(null);setSid('');setEvents([]);setError('')}
   function start(){void work('Creating session…',async()=>{
-    const eq=await request<Equipment>('/sessions',{method:'POST'})
-    resetDrafts();setSid(eq.session_id);sessionStorage.setItem('fieldtrace.session',eq.session_id)
-    setEquipment(eq);setTrace(null);setVisual(emptyVisual);setModel('');setMatch('');setSymptom('');setFollowup('');setEvents(['Session started']);setSource(null)
+    await createSession()
+    resetDrafts();setTrace(null);setVisual(emptyVisual);setEvents(['Session started'])
   })}
   function addFiles(files:FileList|null){
     if(!files)return
@@ -70,45 +91,52 @@ export default function App(){
   }
   async function upload(){
     if(!pending.length)return
+    const id=await ensureSession()
     const form=new FormData();pending.forEach(p=>form.append('images',p.file))
     form.append('view_labels',JSON.stringify(pending.map(p=>p.view)));form.append('user_notes',JSON.stringify(pending.map(p=>p.note||null)))
-    const created=await request<Photo[]>(`/sessions/${sid}/images`,{method:'POST',body:form})
+    const created=await request<Photo[]>(`/sessions/${id}/images`,{method:'POST',body:form})
     clearPending();addEvent(`${created.length} photo${created.length===1?'':'s'} uploaded`);await refresh()
   }
   function identify(){void work('Reading nameplate and matching equipment…',async()=>{
     const selected=pending.filter(p=>p.ocr||p.view==='nameplate')
     if(selected.length>5)throw new Error('Select at most five photos for equipment identification.')
     if(!model.trim()&&!selected.length)throw new Error('Enter the model text or mark a nameplate photo for identification.')
+    const id=await ensureSession()
     const form=new FormData();form.append('entered_equipment_text',model)
     selected.forEach(p=>form.append('images',p.file));form.append('image_roles',JSON.stringify(selected.map(p=>p.view==='nameplate'?'nameplate':'equipment')))
-    const eq=await request<Equipment>(`/sessions/${sid}/equipment/identify`,{method:'POST',body:form})
+    const eq=await request<Equipment>(`/sessions/${id}/equipment/identify`,{method:'POST',body:form})
     setEquipment(eq);setMatch(eq.ranked_candidates[0]?.candidate_id||'');setTrace(null);addEvent('Equipment identification updated; confirmation required')
-    await refresh()
+    await refresh(id)
   })}
   function confirm(){void work('Confirming equipment and saving photos…',async()=>{
-    const eq=await request<Equipment>(`/sessions/${sid}/equipment/confirm`,json({equipment_id:match,identification_revision:equipment?.identification_revision}))
+    const id=await ensureSession()
+    const eq=await request<Equipment>(`/sessions/${id}/equipment/confirm`,json({equipment_id:match,identification_revision:equipment?.identification_revision}))
     setEquipment(eq);setTrace(null);addEvent(`Equipment confirmed: ${eq.confirmed_model}`)
     await upload();await refresh()
   })}
   function analyze(){void work('Inspecting visible conditions…',async()=>{
+    const id=await ensureSession()
     await upload()
     // analyze-all intentionally skips failed images; retry those explicitly.
-    const current=await request<Photo[]>(`/sessions/${sid}/images`)
+    const current=await request<Photo[]>(`/sessions/${id}/images`)
     for(const p of current.filter(p=>p.equipment_id===equipment?.confirmed_equipment_id&&['pending','failed'].includes(p.analysis_status))){
-      await request(`/sessions/${sid}/images/${p.id}/analyze`,{method:'POST'})
+      await request(`/sessions/${id}/images/${p.id}/analyze`,{method:'POST'})
     }
     const updated=await refresh();addEvent('Visible inspection results updated')
     if(updated?.v.uploaded_images.some(p=>p.equipment_id===updated.eq.confirmed_equipment_id&&p.analysis_status==='failed'))setError('Some photos could not be analyzed. They remain saved. Retry visible inspection when the service is available.')
   })}
   function run(){void work('Checking ABB documentation…',async()=>{
-    if(symptom.trim()){setTrace(await request<Trace>(`/sessions/${sid}/troubleshooting/symptoms`,json({symptom})));addEvent(`Symptom added: ${symptom}`)}
-    const t=await request<Trace>(`/sessions/${sid}/troubleshooting/run`,{method:'POST'})
+    if(!confirmed)throw new Error('Confirm the equipment model before running troubleshooting.')
+    const id=await ensureSession()
+    if(symptom.trim()){setTrace(await request<Trace>(`/sessions/${id}/troubleshooting/symptoms`,json({symptom})));addEvent(`Symptom added: ${symptom}`)}
+    const t=await request<Trace>(`/sessions/${id}/troubleshooting/run`,{method:'POST'})
     setTrace(t);addEvent(t.result.status==='failed'?'Troubleshooting service unavailable':'Troubleshooting result updated')
   })}
   function follow(){void work('Checking ABB documentation with your update…',async()=>{
+    const id=await ensureSession()
     const input=entryType==='measurement'?{measurements:[measurement]}:entryType==='check'?{checks_completed:[followup]}:{answer:followup}
     if(trace)setTrace({...trace,result:{...emptyResult,status:'stale'}})
-    const t=await request<Trace>(`/sessions/${sid}/troubleshooting/follow-up`,json({...input,expected_revision:trace?.revision}))
+    const t=await request<Trace>(`/sessions/${id}/troubleshooting/follow-up`,json({...input,expected_revision:trace?.revision}))
     setTrace(t);addEvent(`Follow-up: ${entryType==='measurement'?`${measurement.name} ${measurement.value} ${measurement.unit}`:followup}`)
     setFollowup('');setMeasurement({...measurement,value:''})
   })}
@@ -139,7 +167,7 @@ export default function App(){
       <div className="workspace">
         <div className="intake">
           <section className="panel"><SectionTitle number="01" title="Equipment & photos" detail="Add a clear nameplate photo and areas showing visible damage."/>
-            <fieldset disabled={!sid||!!busy||demo}>
+            <fieldset disabled={!!busy||demo}>
               <label className="upload-box"><span className="upload-symbol">＋</span><strong>Add equipment photos</strong><span>JPEG, PNG or WEBP · up to 10 MB each</span><input aria-label="Add equipment photos" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>{addFiles(e.target.files);e.target.value=''}}/></label>
               {pending.length>0&&<p className="hint">{confirmed?'Ready to upload.':'Photos are queued locally. Nameplate images can be read now; originals are saved against the equipment after you confirm it.'}</p>}
               <div className="photo-list">{pending.map(p=><article className="pending-photo" key={p.key}><img src={p.url} alt={p.file.name}/><div><strong title={p.file.name}>{p.file.name}</strong><label>View<select aria-label={`View for ${p.file.name}`} value={p.view} onChange={e=>setPending(old=>old.map(x=>x.key===p.key?{...x,view:e.target.value}:x))}>{labels.map(l=><option key={l} value={l}>{l.replace('_','-')}</option>)}</select></label><label>Photo note<input value={p.note} maxLength={1200} onChange={e=>setPending(old=>old.map(x=>x.key===p.key?{...x,note:e.target.value}:x))} placeholder="Optional observation"/></label><label className="checkbox"><input type="checkbox" checked={p.ocr||p.view==='nameplate'} onChange={e=>setPending(old=>old.map(x=>x.key===p.key?{...x,ocr:e.target.checked}:x))}/>Use for identification</label><button className="text-button" onClick={()=>{URL.revokeObjectURL(p.url);setPending(old=>old.filter(x=>x.key!==p.key))}}>Remove queued photo</button></div></article>)}</div>
@@ -147,7 +175,7 @@ export default function App(){
               <button className="secondary full-width" onClick={identify}>{confirmed?'Re-detect / correct equipment':'Detect equipment / read nameplate'}</button>
             </fieldset>
             {equipment&&<div className="equipment-result"><div className="row"><p className="eyebrow">{fixture?'REASONING FIXTURE':confirmed?'CONFIRMED EQUIPMENT':'DETECTED EQUIPMENT'}</p>{equipment.confidence&&<Badge value={equipment.confidence}/>}</div><h3>{confirmed||fixture?equipment.confirmed_model:equipment.ranked_candidates[0]?.candidate_model||'No supported match yet'}</h3><p>{confirmed||fixture?equipment.confirmed_equipment_family:'Review the match before continuing.'}</p>{equipment.mismatch_warnings.map((w,i)=><p className="warning-note" key={i}>{w}</p>)}{!confirmed&&equipment.ranked_candidates.length>0&&<fieldset disabled={!!busy||demo}><label>Choose match<select value={match} onChange={e=>setMatch(e.target.value)}>{equipment.ranked_candidates.map(c=><option key={c.candidate_id} value={c.candidate_id}>{c.candidate_model} · {c.match_level}</option>)}</select></label><button className="primary full-width" disabled={!match} onClick={confirm}>Confirm equipment</button></fieldset>}{equipment.raw_ocr_text&&<details><summary>Read nameplate text</summary><pre>{equipment.raw_ocr_text}</pre></details>}</div>}
-            {!sid&&<p className="hint">Start a session to add photos or identify equipment.</p>}
+            {!sid&&<p className="hint">Add photos, model text or a symptom now. Detect equipment will save a session automatically.</p>}
           </section>
           <section className="panel"><SectionTitle number="02" title="Visible findings" detail="Photo observations are visual evidence only, not a diagnosis."/>
             {photos.length>0&&<div className="saved-photos">{photos.map(p=><figure key={p.id}><img src={demo?replay?.image_urls?.[p.id]:`/api/sessions/${sid}/images/${p.id}/file`} alt={p.original_filename}/><figcaption>{p.view_label.replace('_','-')}<small>{p.analysis_status.replaceAll('_',' ')}</small></figcaption>{p.user_note&&<p className="hint">Technician note: {p.user_note}</p>}</figure>)}</div>}
@@ -161,10 +189,10 @@ export default function App(){
           </section>
         </div>
         <div className="results-column">
-          <section className="panel problem"><SectionTitle number="03" title="Describe the problem" detail="Describe the issue or enter an exact fault code, such as 5091."/><fieldset disabled={!confirmed||!!busy||demo}><label>What problem are you seeing?<textarea value={symptom} maxLength={1200} onChange={e=>setSymptom(e.target.value)} placeholder="Drive shows fault 5091. Motor is overheating. There is an unusual noise." rows={3}/></label><div className="run-row"><small>{demo?'Recorded example — live processing is disabled.':confirmed?'Confirmed equipment will scope the documentation search.':'Confirm equipment to continue.'}</small><button className="primary" disabled={!symptom.trim()&&!trace?.reported_symptoms.length} onClick={run}>Run troubleshooting <span>→</span></button></div></fieldset></section>
+          <section className="panel problem"><SectionTitle number="03" title="Describe the problem" detail="Describe the issue or enter an exact fault code, such as 5091."/><fieldset disabled={!!busy||demo}><label>What problem are you seeing?<textarea value={symptom} maxLength={1200} onChange={e=>setSymptom(e.target.value)} placeholder="Drive shows fault 5091. Motor is overheating. There is an unusual noise." rows={3}/></label><div className="run-row"><small>{demo?'Recorded example — live processing is disabled.':confirmed?'Confirmed equipment will scope the documentation search.':'Confirm the equipment model before running troubleshooting.'}</small><button className="primary" disabled={!confirmed||(!symptom.trim()&&!trace?.reported_symptoms.length)} onClick={run}>Run troubleshooting <span>→</span></button></div></fieldset></section>
           <section className="panel result-panel" aria-label="Troubleshooting result"><div className="result-title"><p className="eyebrow">DOCUMENTED TROUBLESHOOTING</p>{!failed&&!['not_run','stale'].includes(result.status)&&<Badge value={result.confidence}/>}</div>
             {!failed&&!['not_run','stale'].includes(result.status)&&<p className="confidence-guide">HIGH: stronger evidence · MEDIUM: supported direction, more checks needed · LOW: more information needed. These are evidence levels, not probabilities.</p>}
-            {failed?<div className="result-empty"><h2>Troubleshooting service unavailable</h2><p>Your session inputs are saved. No new diagnosis was generated. Try again when the service is available.</p><button disabled={!!busy||demo} onClick={()=>void work('Checking ABB documentation…',async()=>setTrace(await request<Trace>(`/sessions/${sid}/troubleshooting/run`,{method:'POST'})))}>Retry troubleshooting</button></div>:
+            {failed?<div className="result-empty"><h2>Troubleshooting service unavailable</h2><p>Your session inputs are saved. No new diagnosis was generated. Try again when the service is available.</p><button disabled={!!busy||demo} onClick={()=>void work('Checking ABB documentation…',async()=>{const id=await ensureSession();setTrace(await request<Trace>(`/sessions/${id}/troubleshooting/run`,{method:'POST'}))})}>Retry troubleshooting</button></div>:
             usable?<><p className="result-label">Primary suspected cause</p><h2 className="cause-title">{result.primary_cause!.label}</h2><p className="result-disclaimer">{result.message}</p><div className="rationale"><h3>Why</h3><p>{result.primary_cause!.rationale}</p>{cites(result.primary_cause!.citation_chunk_ids)}</div>
             {result.alternative_causes.length>0&&<div className="result-section"><h3>Other possible causes</h3>{result.alternative_causes.map((c,i)=><div key={i}><strong>{c.label}</strong><p>{c.rationale}</p>{cites(c.citation_chunk_ids)}</div>)}</div>}
             <div className="result-section"><h3>Recommended checks</h3>{result.recommended_actions.length?<ol className="checks">{result.recommended_actions.map((a,i)=><li key={i}><p>{a.action}</p>{cites(a.citation_chunk_ids)}</li>)}</ol>:<p className="empty-copy">No supported checks returned for this run.</p>}</div>
