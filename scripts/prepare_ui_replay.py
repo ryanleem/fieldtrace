@@ -24,6 +24,12 @@ def replay(s,title,final=None):
             'source_text':{c['chunk_id']:dict(c,chunk_text=texts[c['chunk_id']]) for c in final['sources']}}
 acs=replay(live,'ACS880 fault 5091',guard)
 low=replay(weak,'Weak-evidence ACS880 example')
+motor_run=read('step4-live-motor.json')['scenarios'][0]
+motor=replay(motor_run,'Motor uncertainty fixture')
+motor['equipment']=dict(base,session_id=motor_run['state_after']['session_id'],
+    confirmed_equipment_id=None,confirmed_model='ABB induction motor family (temporary fixture)',
+    confirmed_equipment_family='Induction Motors and Generators',confirmation_status='FIXTURE',confidence=None)
+motor['disclosure']='Temporary motor-family fixture for reasoning validation only. Recorded live motor-overheating run with a supplied dust observation; no motor identification or new photo analysis. Relevance was weak, so the pipeline abstained before diagnosis/claim verification.'
 photo=read('results-openai-final.json')['results'][0]
 manifest=read('manifest.json')['images'][0]
 visual=replay(weak,'Recorded visible corrosion')
@@ -40,8 +46,8 @@ visual['visual']={'uploaded_images':[{'id':'recorded-photo-01','equipment_id':No
 visual['image_urls']={'recorded-photo-01':'/replay-photo-01.jpg'}
 visual['attribution']=f"Photo: {manifest['title']} — {manifest['author']}, {manifest['license']}. Source: {manifest['source_page']}. {manifest['modifications']}"
 target=ROOT/'frontend/public';target.mkdir(exist_ok=True,parents=True)
-(target/'demo.json').write_text(json.dumps({'acs880':acs,'weak':low,'visual':visual},ensure_ascii=False,indent=2),encoding='utf-8')
+(target/'demo.json').write_text(json.dumps({'acs880':acs,'weak':low,'motor':motor,'visual':visual},ensure_ascii=False,indent=2),encoding='utf-8')
 shutil.copyfile(ROOT/'data/evaluation/images'/manifest['filename'],target/'replay-photo-01.jpg')
 (target/'REPLAY-PROVENANCE.md').write_text('# Replay provenance\n\nRead-only recorded validation outputs, not fresh analysis.\n\n'+visual['attribution']+
-    '\nLicense: '+manifest['license_url']+'\n\nACS880: step4-live-verifier-review-fix.json and documented step4-verifier-guard-replay.json.\nWeak evidence: step4-live-fixed.json.\nVision: results-openai-final.json.\nNo provider prompts, secrets or raw internal audits are exported.\n',encoding='utf-8')
-print('Prepared three labeled UI replay records')
+    '\nLicense: '+manifest['license_url']+'\n\nACS880: step4-live-verifier-review-fix.json and documented step4-verifier-guard-replay.json.\nWeak evidence: step4-live-fixed.json.\nMotor fixture: step4-live-motor.json, first recorded run; temporary reasoning fixture, not supported identity.\nVision: results-openai-final.json.\nNo provider prompts, secrets or raw internal audits are exported.\n',encoding='utf-8')
+print('Prepared labeled UI replay records including motor reasoning fixture')

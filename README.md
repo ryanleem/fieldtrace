@@ -12,6 +12,15 @@ A technician can:
 
 The system is designed to avoid guessing when the evidence is weak.
 
+## Why FieldTrace
+
+FieldTrace goes beyond chat over manuals by combining confirmed equipment identity,
+physical photo observations, and technician symptoms or fault codes. Hybrid ABB manual
+retrieval, claim verification, and uncertainty handling support answers with exact
+citations. Persistent follow-up keeps the investigation in the same session.
+
+See the [demo script](DEMO.md) and [demo checklist](DEMO-CHECKLIST.md).
+
 ## Start here if you are a teammate
 
 You do **not** need Ryan's local files. Everything needed to collaborate is in this private repository, except:
@@ -251,9 +260,9 @@ npm run test:e2e
 ```
 
 Latest validated baseline:
-- **139 backend tests**
+- **142 backend tests**
 - **4 frontend unit tests**
-- **7 browser tests**
+- **21 browser tests**
 
 ## Before you commit
 
@@ -287,3 +296,6 @@ Detailed implementation notes:
 - [Step 3 — visual inspection](STEP3.md)
 - [Step 4 — troubleshooting engine](STEP4.md)
 - [Step 5 — technician UI](STEP5.md)
+- [Demo script](DEMO.md)
+- [Demo checklist](DEMO-CHECKLIST.md)
+- [Step 6 — demo validation](STEP6-VALIDATION.md)

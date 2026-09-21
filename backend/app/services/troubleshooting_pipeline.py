@@ -5,6 +5,7 @@ All LLM-generated public technical text, including cause labels/rationales,
 actions, questions and missing-information text, goes through the verifier.
 """
 from collections import defaultdict
+import re
 from app.schemas.troubleshooting import STAGE_SCHEMAS
 from app.services.troubleshooting_provider import TroubleshootingUnavailable
 from app.services.troubleshooting_query import construct_query, retrieve
@@ -74,16 +75,25 @@ class Pipeline:
             return None, False
         # This payload intentionally contains ONLY the statement and its own citations.
         cited = [evidence[cid] for cid in ids]
+        def record(result, statement, record_key):
+            row = {'key': record_key, 'text': statement, 'citation_chunk_ids': ids, **result.model_dump()}
+            # A live verifier accepted a causal photo inference while explicitly
+            # admitting it was not in its sources. Fail closed on that contradiction.
+            if result.status == 'SUPPORTED' and re.search(
+                    r'\bnot (?:explicitly (?:stated|supported|documented)|directly supported|mentioned in (?:the )?(?:cited|supplied))\b',
+                    result.explanation, re.I):
+                row.update(status='UNSUPPORTED', provider_status='SUPPORTED',
+                           guard_reason='Verifier explanation admits an evidence gap')
+            log.append(row)
+            return row['status']
         result = self.call('verify', {'claim': text, 'evidence': cited})
-        log.append({'key': key, 'text': text, 'citation_chunk_ids': ids, **result.model_dump()})
-        if result.status == 'SUPPORTED':
+        status = record(result, text, key)
+        if status == 'SUPPORTED':
             return text, False
-        if result.status == 'PARTIAL' and result.revised_text:
+        if status == 'PARTIAL' and result.revised_text:
             # Never trust the verifier's rewrite without checking the rewrite itself.
             checked = self.call('verify', {'claim': result.revised_text, 'evidence': cited})
-            log.append({'key': key + ':revision', 'text': result.revised_text,
-                        'citation_chunk_ids': ids, **checked.model_dump()})
-            if checked.status == 'SUPPORTED':
+            if record(checked, result.revised_text, key + ':revision') == 'SUPPORTED':
                 return result.revised_text, True
         return None, False
 
