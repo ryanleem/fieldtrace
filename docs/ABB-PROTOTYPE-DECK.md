@@ -105,12 +105,11 @@ Visual direction: ABB red #FF000F accents, black/dark gray text, medium gray sec
 > PARTIAL: narrow it and verify again
 > UNSUPPORTED: remove it or abstain
 >
-> An observed corrosion-to-STO inference lacked cited support.
-> The corrected verifier removed that causal link on live recheck.
+> Unsupported causal links are rejected when the cited evidence does not establish them.
 
-**Recommended screenshot/visual:** Editorial before/after text comparison labeled “Historical error” and “Corrected recheck,” based on STEP6-VALIDATION.md. Do not portray it as a UI verifier panel or show raw private audits.
+**Recommended screenshot/visual:** A simple three-row explanation of SUPPORTED, PARTIAL and UNSUPPORTED with their handling rules. Present it as an explanatory slide, not a verifier panel in the UI. Keep the historical example in the speaker notes and do not show raw private audits.
 
-**Speaker notes:** The initial verifier accepted a link between corrosion and STO continuity without explicit manual support. After a targeted fix, a separate live recheck returned PARTIAL, removed the link and verified narrower wording as SUPPORTED. This demonstrates a useful safeguard and a real observed failure, not guaranteed correctness. Failed primary support permits one retry, then LOW abstention if still unsupported.
+**Speaker notes:** Step 6 testing found that the verifier accepted an unsupported causal link between visible corrosion and STO continuity. The verifier was tightened. A separate live recheck returned PARTIAL, removed the unsupported causal link and reverified narrower wording as SUPPORTED. This demonstrates a useful safeguard and a real observed failure, not guaranteed correctness. Failed primary support permits one retry, then LOW abstention if still unsupported.
 
 ## Slide 7: Live prototype: ACS880 fault 5091
 
@@ -130,7 +129,7 @@ Visual direction: ABB red #FF000F accents, black/dark gray text, medium gray sec
 
 **Recommended screenshot/visual:** Switch to the live app. Keep a labeled recorded result screenshot available as backup.
 
-**Speaker notes:** Follow the companion script. MEDIUM is the validated outcome, not a forced setting or guaranteed live result. The manual association does not prove a physical root cause. Do not suggest bypassing STO. Announce any switch to replay, whose provenance includes a documented output-role guard replay.
+**Speaker notes:** Follow the companion script. MEDIUM is the validated outcome, not a forced setting or guaranteed live result. The manual association does not prove a physical root cause. Do not suggest bypassing STO. Announce any switch to a labeled replay of a previously validated result. It is not fresh analysis; the replay provenance documents how the prepared example was assembled.
 
 ## Slide 8: What we validated
 

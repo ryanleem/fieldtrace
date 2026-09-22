@@ -8,7 +8,7 @@ No live calls are required merely to prepare these materials.
 
 Have live mode at port 5173 and replay at 5174 open separately. Live must say LOCAL WORKSPACE. Use a fresh browser tab/session with no old case. If a previous session restores, click **Start new troubleshooting session** once before presenting to clear it. That is reset preparation, not a prerequisite to typing or selecting photos on a fresh page.
 
-Use typed `ABB ACS880-01` for repeatability. A genuine readable nameplate is optional; typed identification does not validate field-photo OCR. Have `frontend/public/replay-photo-01.jpg` ready only as a disclosed generic reference. Its [attribution](../frontend/public/REPLAY-PROVENANCE.md) must remain visible when shown. Do not represent this connector as the physical ACS880 being investigated.
+Use typed `ABB ACS880-01` for the reliable main demo path. A genuine readable nameplate may be used if available; typed identification does not validate field-photo OCR. Keep the generic connector example for the separate visible-evidence replay later.
 
 ## 0:00–0:30 — Start with the equipment
 
@@ -16,17 +16,17 @@ Use typed `ABB ACS880-01` for repeatability. A genuine readable nameplate is opt
 
 **Say:** “FieldTrace starts with the equipment in front of the technician. I can enter the model and exact fault code straight away. The workspace keeps our observations and documentation together as we investigate.”
 
-**Expected UI:** Both fields accept text. **Run troubleshooting** stays disabled with “Confirm the equipment model before running troubleshooting.” No result exists yet.
+**Expected UI:** Both fields accept text. **Add equipment photos** is also immediately usable on a fresh page; no photo is needed for this typed-model case. **Run troubleshooting** stays disabled with “Confirm the equipment model before running troubleshooting.” No result exists yet.
 
 **Fallback:** If the live app cannot load, announce replay immediately. A recorded result does not demonstrate fresh intake; explain that distinction.
 
-## 0:30–1:05 — Show photo intake and confirm equipment
+## 0:30–1:05 — Detect and confirm equipment
 
-**Click/type:** Click **Add equipment photos**, select the reference photo, select **close-up** for View and enter the Photo note `Generic reference photo for UI demonstration; not this ACS880.` Leave **Use for identification** unchecked. Show the queued preview, then click **Remove queued photo** so it cannot become physical evidence for the drive case. Click **Detect equipment / read nameplate**, review ACS880-01 and warnings, then **Confirm equipment** for that match.
+**Click/type:** Click **Detect equipment / read nameplate**, review the ACS880-01 candidate and any warnings, then click **Confirm equipment** for that match.
 
-**Say:** “Photos can be queued immediately too. This sample only demonstrates intake, so I am removing it from the drive case. Detect creates the session automatically. We review and confirm the model before using its documentation.”
+**Say:** “I am using the typed model for this demonstration. A genuine readable nameplate can also be used. Detect creates the session automatically, and I confirm ACS880-01 before running the documentation check.”
 
-**Expected UI:** Photo selection stays browser-local and needs no backend session. Detect creates or reuses one session and preserves model/symptom drafts. The card shows CONFIRMED EQUIPMENT and troubleshooting becomes available. With genuine equipment photos, confirmation saves queued originals; visual analysis is separate.
+**Expected UI:** Detect creates or reuses one session and preserves the typed model and symptom. The card shows CONFIRMED EQUIPMENT and troubleshooting becomes available. Photo intake remains optional for this case.
 
 **Fallback:** On creation/identification failure, show preserved drafts. Do not select a different model to force success. If a refresh and one reasonable retry cannot resolve a transient failure, use labeled ACS880 replay.
 
@@ -40,7 +40,7 @@ Use typed `ABB ACS880-01` for repeatability. A genuine readable nameplate is opt
 
 **Say after a supported result:** “This is a documented direction for investigation. MEDIUM means more checks are needed. It does not prove what failed physically.”
 
-**Fallback:** If LOW appears, acknowledge the missing evidence and its question. For a failed or slow call, say “I'll show our previously validated recorded run,” switch to 5174 and select **ACS880 fault 5091**. Keep the replay banner visible. Its provenance includes a documented output-role guard replay; it is not an untouched fresh response. Do not change prompts to force MEDIUM.
+**Fallback:** If LOW appears, acknowledge the missing evidence and its question. For a failed or slow call, say “I'll show our previously validated recorded run,” switch to 5174 and select **ACS880 fault 5091**. Keep the replay banner visible. Explain that this is a labeled replay of a previously validated result, not fresh analysis. The [replay provenance](../frontend/public/REPLAY-PROVENANCE.md) records how the prepared example was assembled. Do not change prompts to force MEDIUM.
 
 ## 2:00–2:40 — Inspect the exact citation
 
@@ -62,7 +62,7 @@ Use typed `ABB ACS880-01` for repeatability. A genuine readable nameplate is opt
 
 **Fallback:** After a timeout, **Refresh session status** before retrying because processing may still be active. Replay is read-only: do not simulate a live follow-up submission. Show saved history if available, or explain the previously validated behavior and move on.
 
-## 3:30–4:20 — Show uncertainty and visible evidence
+## 3:30–4:20 — Separately show uncertainty and visible evidence, if time allows
 
 **Click/type:** Announce the switch to replay. Select **Motor uncertainty fixture** and read **Temporary motor-family fixture for reasoning validation only.** Then select **Recorded visible finding** and show its image, view, observation and attribution.
 
@@ -70,7 +70,7 @@ Use typed `ABB ACS880-01` for repeatability. A genuine readable nameplate is opt
 
 **Say for the photo:** “This separate generic connector example shows visible corrosion and discoloration. It does not prove an internal failure or a cause of fault 5091. Visual confidence describes what can be seen.”
 
-**Expected UI:** Replay banner throughout, no primary cause for motor LOW, and image/view association for photo observations. No new provider call occurs.
+**Expected UI:** Replay banner throughout, no primary cause for motor LOW, and image/view association for photo observations. No new provider call occurs. Keep the generic photo attribution visible; its source is documented in [replay provenance](../frontend/public/REPLAY-PROVENANCE.md). This photo does not establish ABB identity.
 
 **Fallback:** Use labeled backup screenshots or replay video. If time is short, show only one example. Optional live photo analysis belongs in a separate clearly labeled controlled session outside the timed main case.
 

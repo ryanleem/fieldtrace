@@ -38,8 +38,9 @@ then verify technical claims against retrieved ABB evidence.”
    the nameplate and photos are not processed again.”
 
 If live output differs from the rehearsed result, acknowledge it. Do not adjust the
-symptom or prompts to force MEDIUM. The recorded ACS880 replay preserves the validated
-result and its documented output-role guard replay, with disclosure in the banner.
+symptom or prompts to force MEDIUM. Use the labeled replay of a previously validated ACS880 result, with disclosure
+in the banner. It is not fresh analysis; [replay provenance](frontend/public/REPLAY-PROVENANCE.md)
+documents how the prepared example was assembled.
 
 ## 2. Motor uncertainty — 45 seconds
 
