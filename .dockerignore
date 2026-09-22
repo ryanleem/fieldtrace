@@ -1,0 +1,17 @@
+# Allowlist prevents local secrets, PDFs, uploads and caches entering image builds.
+**
+!Dockerfile
+!requirements.lock.txt
+!backend/
+!backend/**
+!scripts/
+!scripts/**
+!data/
+!data/manuals/
+!data/manuals/manifest.json
+!data/equipment_catalog.json
+**/__pycache__/
+**/*.pyc
+**/.env
+**/.env.*
+backend/tests/

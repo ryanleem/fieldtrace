@@ -1,5 +1,5 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from app.api.equipment import call
 from app.config import get_settings
 from app.db.session import get_engine
@@ -40,4 +40,6 @@ def follow_up(session_id: UUID, payload: TroubleshootingInput,
 
 @router.get('/runs/{run_id}')
 def history(session_id: UUID, run_id: UUID, include_evidence: bool = False):
+    if include_evidence and get_settings().app_env == 'production':
+        raise HTTPException(403, 'Detailed audit is unavailable in the public demo')
     return call(service.get_run, get_engine(), session_id, run_id, include_evidence)

@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react'
-import {json,request,safeLink} from './api'
+import {apiUrl,json,request,safeLink} from './api'
 import type {Citation,Equipment,Photo,Replay,Result,Trace,Visual} from './types'
 
 const labels=['front','back','left','right','top','bottom','nameplate','close_up','additional']
@@ -178,7 +178,7 @@ export default function App(){
             {!sid&&<p className="hint">Add photos, model text or a symptom now. Detect equipment will save a session automatically.</p>}
           </section>
           <section className="panel"><SectionTitle number="02" title="Visible findings" detail="Photo observations are visual evidence only, not a diagnosis."/>
-            {photos.length>0&&<div className="saved-photos">{photos.map(p=><figure key={p.id}><img src={demo?replay?.image_urls?.[p.id]:`/api/sessions/${sid}/images/${p.id}/file`} alt={p.original_filename}/><figcaption>{p.view_label.replace('_','-')}<small>{p.analysis_status.replaceAll('_',' ')}</small></figcaption>{p.user_note&&<p className="hint">Technician note: {p.user_note}</p>}</figure>)}</div>}
+            {photos.length>0&&<div className="saved-photos">{photos.map(p=><figure key={p.id}><img src={demo?replay?.image_urls?.[p.id]:apiUrl(`/sessions/${sid}/images/${p.id}/file`)} alt={p.original_filename}/><figcaption>{p.view_label.replace('_','-')}<small>{p.analysis_status.replaceAll('_',' ')}</small></figcaption>{p.user_note&&<p className="hint">Technician note: {p.user_note}</p>}</figure>)}</div>}
             {findings.map(f=><article className="finding" key={f.id}><span className="finding-marker"/><div><strong>{f.issue_type.replaceAll('_',' ')}</strong><p>{f.description}</p><small>Visual confidence: {f.visual_confidence.toUpperCase()} · {(f.supporting_image_ids||[f.image_id]).map(id=>photos.find(p=>p.id===id)?.view_label.replace('_','-')||'recorded image').join(', ')}</small></div></article>)}
             {!findings.length&&photos.length>0&&photos.every(p=>p.analysis_status==='no_clear_abnormality')?<p className="neutral-message">No obvious visible abnormality detected in these images.</p>:!findings.length&&<p className="empty-copy">{photos.some(p=>p.analysis_status==='failed')?'Image analysis is unavailable. No findings have been substituted.':'Uploaded photos will appear here with their visible observations.'}</p>}
             {photos.some(p=>p.analysis_status==='failed')&&<p className="warning-note">Some images failed analysis. Retry when the provider is available.</p>}
