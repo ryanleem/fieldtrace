@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.config import get_settings
 from sqlalchemy import text
 
 from app.api.documents import router as documents_router
@@ -14,6 +16,7 @@ from app.api.troubleshooting import router as troubleshooting_router
 from app.api.viewer import router as viewer_router
 from app.db.init_db import initialize
 from app.db.session import get_engine
+from app.demo_safety import configure_safety
 
 
 @asynccontextmanager
@@ -26,8 +29,17 @@ async def lifespan(app):
     get_engine().dispose()
 
 
-app = FastAPI(title="ABB Guardian: Grounded Troubleshooting", version="0.4.0", lifespan=lifespan)
-app.include_router(documents_router)
+settings = get_settings()
+production = settings.app_env == 'production'
+app = FastAPI(title="ABB Guardian: Grounded Troubleshooting", version="0.4.0", lifespan=lifespan,
+              docs_url=None if production else '/docs', redoc_url=None if production else '/redoc',
+              openapi_url=None if production else '/openapi.json')
+configure_safety(app, settings)
+app.add_middleware(CORSMiddleware, allow_origins=get_settings().cors_origins,
+                   allow_credentials=False, allow_methods=['GET', 'POST', 'PUT', 'DELETE'],
+                   allow_headers=['Content-Type'])
+if not production:
+    app.include_router(documents_router)
 app.include_router(search_router)
 app.include_router(equipment_router)
 app.include_router(inspection_router)

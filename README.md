@@ -299,3 +299,8 @@ Detailed implementation notes:
 - [Demo script](DEMO.md)
 - [Demo checklist](DEMO-CHECKLIST.md)
 - [Step 6 — demo validation](STEP6-VALIDATION.md)
+
+## Cloud deployment
+
+See [Vercel + Railway deployment](docs/DEPLOYMENT.md) for cloud configuration,
+persistent uploads and one-time corpus ingestion. The local setup above is unchanged.
