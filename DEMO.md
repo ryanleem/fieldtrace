@@ -4,6 +4,8 @@ Use a live workspace on port 5173 and a clearly labeled replay tab on port 5174.
 Rehearse before presenting; model latency varies. Never call recorded output a fresh
 analysis. If live calls are slow, explicitly switch to the recorded example.
 
+Presenter-ready click/type/say instructions: [ABB demo script](docs/ABB-DEMO-SCRIPT.md).
+
 ## Intro — 20 seconds
 
 “FieldTrace connects physical ABB equipment to the right technical documentation.
@@ -13,12 +15,18 @@ then verify technical claims against retrieved ABB evidence.”
 
 ## 1. ACS880 fault 5091 — about 2 minutes
 
-1. Click **Start new troubleshooting session**. Show the photo/nameplate intake.
-   Explain that real nameplate OCR is supported, but use typed `ABB ACS880-01` for
-   this repeatable demo if a clear real nameplate is not available. Don't pass off a
-   generic photo as an ABB nameplate.
-2. Click **Detect equipment / read nameplate**, review and **Confirm equipment**.
-3. Enter `Drive shows fault 5091` and click **Run troubleshooting**.
+1. Open a fresh live workspace. Immediately enter `ABB ACS880-01` in **Model text,
+   if known** and `Drive shows fault 5091` in **What problem are you seeing?**.
+   **Add equipment photos** is already usable; selection queues files locally.
+   Do not click Start new troubleshooting session as a prerequisite. If an old
+   case restores, use that button only to reset before the demonstration.
+   Use a genuine readable nameplate for OCR, or disclose the typed-model route.
+   Do not pass a generic reference photograph off as an ABB nameplate or drive.
+2. Click **Detect equipment / read nameplate**. This creates/reuses the backend
+   session automatically and preserves typed model/symptom drafts. Review the
+   candidate and **Confirm equipment**. Queued originals are saved on confirmation.
+3. Click **Run troubleshooting**, now enabled. The symptom was editable before
+   confirmation; only running the troubleshooting was gated.
 4. While it runs: “The confirmed equipment scopes the manual search. Fault codes
    are preserved exactly. Evidence is reviewed before technical claims are displayed.”
 5. Show the supported STO circuit signal interruption direction and **MEDIUM**.
