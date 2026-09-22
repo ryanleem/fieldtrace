@@ -1,5 +1,18 @@
 # Step 6 — Supervised demo audit
 
+## Final baseline note for submission preparation
+
+The completed Step 6 baseline is **142 backend tests, 4 frontend unit tests and
+21 browser tests**, with the production build passed, as recorded in README and
+confirmed in the submission brief. The 14-browser-test result below is the earlier
+post-verifier-fix audit; seven subsequent first-use regressions cover immediate
+intake, lazy creation, draft preservation, failure, concurrency and reset.
+
+The current App.tsx allows model/symptom entry and photo selection before a session
+exists. Detect equipment creates/reuses a session automatically; confirmation gates
+troubleshooting. Start new troubleshooting session is an explicit reset/new case.
+These documentation clarifications do not represent a new live audit or test rerun.
+
 ## Scope and delivered changes
 
 Kept the industrial layout and existing architecture. Added concise photo/symptom,

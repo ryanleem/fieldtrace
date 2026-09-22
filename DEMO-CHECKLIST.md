@@ -8,7 +8,10 @@
 - [ ] Correct vision provider selected; its key is available.
 - [ ] Test image `frontend/public/replay-photo-01.jpg` available with provenance.
 - [ ] Generic-photo and temporary-motor-fixture disclosures ready; no motor added to catalog.
-- [ ] Start a new primary session; no old symptom, photos, result or measurement draft.
+- [ ] Fresh live workspace allows model/symptom typing and photo selection immediately.
+- [ ] No old case is displayed; use Start new troubleshooting session only to reset a restored case.
+- [ ] Detect creates/reuses one session and preserves drafts; Run stays gated until confirmation.
+- [ ] Generic reference photos are kept separate from the ACS880 fault case.
 - [ ] Rehearse ACS880-01 / fault 5091 and check MEDIUM with real citations.
 - [ ] Open the exact page 525 excerpt and check original manual link before judging.
 - [ ] Submit one follow-up and confirm the session continues without photo processing.
