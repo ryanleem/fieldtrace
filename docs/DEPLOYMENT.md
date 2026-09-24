@@ -9,6 +9,21 @@ The prototype lacks authentication and tenant isolation. The production guard be
 limits abuse but cannot identify authorized users. Use authorized demo data and
 supervised access; this is not production security.
 
+## Current deployed environment
+
+The supervised ABB Accelerator demo is currently deployed:
+
+- Frontend: https://fieldtrace-blush.vercel.app
+- Backend health: https://fieldtrace-production.up.railway.app/health
+- Railway project: `FieldTrace`
+- Railway services: `fieldtrace` and `Postgres`
+- PostgreSQL: 17 with pgvector 0.8.6
+- Indexed corpus: 2 ABB manuals, 736 pages, 11,085 chunks
+- Upload persistence: verified across redeployment
+- Production CORS: configured for the Vercel frontend
+
+A live smoke test verified equipment confirmation, same-session follow-up, and the actual fault-5091 citation on physical page 525. Model confidence can vary between runs, so the labeled replay remains the backup demo path.
+
 ## Public demo safety
 
 Public backend endpoints can consume provider credits. **CORS is not authentication**:
@@ -204,8 +219,8 @@ set the cloud base URL explicitly. No Railway hostname is hard-coded in source.
 
 ## Part C — Verification after authorized deployment
 
-These are future manual checks, not runs performed during preparation. Reasoning and
-vision use paid calls: perform those checks only when authorized.
+The production deployment has completed the core smoke test below. Reasoning and
+vision use paid calls, so repeat these checks only when needed.
 
 - Open the public live URL; type `ABB ACS880-01` and `Drive shows fault 5091`.
 - Detect and confirm; verify drafts survive automatic session creation.

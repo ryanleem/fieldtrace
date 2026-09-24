@@ -12,6 +12,18 @@ A technician can:
 
 The system is designed to avoid guessing when the evidence is weak.
 
+## Live demo
+
+FieldTrace is deployed for the ABB Accelerator prototype demo:
+
+- **Frontend:** https://fieldtrace-blush.vercel.app
+- **Backend health:** https://fieldtrace-production.up.railway.app/health
+- **Hosting:** Vercel frontend + Railway FastAPI backend + Railway PostgreSQL/pgvector
+- **Indexed corpus:** 2 ABB manuals, 736 pages, 11,085 chunks
+- **Uploads:** persistent Railway volume
+
+This is a supervised hackathon prototype, not a production service. Public API usage can consume provider credits and the deployment may be paused after the event.
+
 ## Why FieldTrace
 
 FieldTrace goes beyond chat over manuals by combining confirmed equipment identity,
@@ -260,8 +272,8 @@ npm run test:e2e
 ```
 
 Latest validated baseline:
-- **142 backend tests**
-- **4 frontend unit tests**
+- **174 backend tests**
+- **6 frontend unit tests**
 - **21 browser tests**
 
 ## Before you commit
@@ -302,5 +314,5 @@ Detailed implementation notes:
 
 ## Cloud deployment
 
-See [Vercel + Railway deployment](docs/DEPLOYMENT.md) for cloud configuration,
-persistent uploads and one-time corpus ingestion. The local setup above is unchanged.
+See [Vercel + Railway deployment](docs/DEPLOYMENT.md) for the deployed architecture,
+public-demo safeguards, persistent uploads and corpus setup. The local setup above is unchanged.
