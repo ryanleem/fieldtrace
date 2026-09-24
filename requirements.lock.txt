@@ -73,3 +73,8 @@ typing-inspection==0.4.4
 tzdata==2026.3
 urllib3==2.7.0
 uvicorn==0.52.4
+
+PyJWT==2.15.0
+cryptography==50.0.1
+cffi==2.1.1
+pycparser==3.0

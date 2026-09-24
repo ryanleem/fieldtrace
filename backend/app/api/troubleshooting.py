@@ -8,7 +8,9 @@ from app.services.troubleshooting_provider import get_troubleshooting_provider
 from app.services import troubleshooting_sessions as service
 from app.schemas.troubleshooting import TroubleshootingInput, SymptomInput
 
-router = APIRouter(prefix='/sessions/{session_id}/troubleshooting', tags=['grounded troubleshooting'])
+from app.auth import session_access
+
+router = APIRouter(dependencies=[Depends(session_access)], prefix='/sessions/{session_id}/troubleshooting', tags=['grounded troubleshooting'])
 
 
 @router.put('')

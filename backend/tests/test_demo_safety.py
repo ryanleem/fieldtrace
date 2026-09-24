@@ -153,7 +153,11 @@ def test_production_docs_and_audits_disabled(monkeypatch):
         client = TestClient(main.app)  # No context manager: do not initialize DB/models.
         for path in ['/docs', '/redoc', '/openapi.json']:
             assert client.get(path).status_code == 404
+        assert client.get(f'/sessions/{uuid4()}/troubleshooting/runs/{uuid4()}?include_evidence=true').status_code == 401
+        from app.auth import session_access
+        main.app.dependency_overrides[session_access] = lambda: None
         assert client.get(f'/sessions/{uuid4()}/troubleshooting/runs/{uuid4()}?include_evidence=true').status_code == 403
+        main.app.dependency_overrides.clear()
         assert client.post('/documents/ingest').status_code == 403
     finally:
         monkeypatch.delenv('APP_ENV')

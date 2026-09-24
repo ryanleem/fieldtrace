@@ -8,7 +8,9 @@ from app.services import inspection_images as service
 from app.services.vision_provider import get_vision_provider
 from app.services.visual_context import build_visual_retrieval_context
 
-router = APIRouter(prefix='/sessions', tags=['visual evidence'])
+from app.auth import session_access
+
+router = APIRouter(dependencies=[Depends(session_access)], prefix='/sessions', tags=['visual evidence'])
 
 
 @router.post('/{session_id}/images', status_code=201)

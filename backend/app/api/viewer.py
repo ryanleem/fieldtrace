@@ -1,6 +1,6 @@
 """Read-only Step 5 views; never expose provider prompts or candidate audits."""
 from uuid import UUID
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.config import get_settings
@@ -10,7 +10,9 @@ from app.services.inspection_images import load_image, image_path
 from app.services.equipment_sessions import load_session
 from app.api.equipment import call
 
-router = APIRouter(prefix='/sessions', tags=['source viewer'])
+from app.auth import session_access
+
+router = APIRouter(dependencies=[Depends(session_access)], prefix='/sessions', tags=['source viewer'])
 
 
 def cited_source(engine, session_id, run_id, chunk_id):

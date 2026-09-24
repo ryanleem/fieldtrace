@@ -167,9 +167,11 @@ def test_api_multipart_identify_and_confirm(equipment_db, monkeypatch):
     monkeypatch.setattr(api, 'get_engine', lambda: equipment_db)
     app = FastAPI()
     app.include_router(api.router)
+    from conftest import authenticated_client
+    authenticated_client(app, monkeypatch, equipment_db, None)
     app.dependency_overrides[get_ocr_provider] = lambda: MockOCR()
     with TestClient(app) as client:
-        session_id = client.post('/sessions').json()['session_id']
+        session_id = client.post('/sessions', json={'session_name': 'Equipment test'}).json()['session_id']
         path = f'/sessions/{session_id}/equipment'
         response = client.post(path + '/identify', data={'entered_equipment_text': 'ACS580'},
                                files=[('images', ('plate.png', image_bytes(), 'image/png'))])

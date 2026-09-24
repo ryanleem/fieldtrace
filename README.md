@@ -33,6 +33,18 @@ citations. Persistent follow-up keeps the investigation in the same session.
 
 See the [demo script](DEMO.md) and [demo checklist](DEMO-CHECKLIST.md).
 
+## Accounts and saved cases (local implementation)
+
+Live use now requires Supabase Auth configuration. Supabase handles login only;
+FieldTrace data stays in Railway PostgreSQL. Signed-in technicians can name, rename
+and reopen their cases from **My Sessions**. The name dialog preserves fresh intake
+drafts until a case is created. Use `/?demo=true` for the public labeled replay.
+
+Set backend `SUPABASE_URL` and frontend `VITE_SUPABASE_URL` /
+`VITE_SUPABASE_ANON_KEY` (public key only), then apply the additive session migration.
+See [authentication setup and migration](docs/DEPLOYMENT.md#authentication-and-saved-sessions-pending-review-not-deployed).
+These changes have not been deployed; the current hosted demo is unchanged.
+
 ## Start here if you are a teammate
 
 You do **not** need Ryan's local files. Everything needed to collaborate is in this private repository, except:

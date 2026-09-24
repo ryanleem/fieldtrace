@@ -1,14 +1,17 @@
 import json
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query
 
 from app.db.session import get_engine
 from app.schemas.equipment import ConfirmEquipment, EquipmentState
 from app.services.equipment_ocr import MAX_IMAGE_BYTES, get_ocr_provider
 from app.services import equipment_sessions as service
 
-router = APIRouter(prefix='/sessions', tags=['equipment identification'])
+from app.auth import require_user, session_access
+from app.services import user_sessions
+
+router = APIRouter(prefix='/sessions', tags=['equipment identification'], dependencies=[Depends(session_access)])
 
 
 def call(operation, *args):
@@ -22,9 +25,24 @@ def call(operation, *args):
         raise HTTPException(422, str(error)) from error
 
 
-@router.post('', response_model=EquipmentState, status_code=201)
-def create():
-    return service.create_session(get_engine())
+@router.post('', status_code=201)
+def create(payload: user_sessions.SessionName, user_id: UUID = Depends(require_user)):
+    return user_sessions.create(get_engine(), user_id, payload)
+
+
+@router.get('')
+def history(user_id: UUID = Depends(require_user), limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
+    return user_sessions.list_owned(get_engine(), user_id, limit, offset)
+
+
+@router.get('/{session_id}')
+def metadata(session_id: UUID, user_id: UUID = Depends(require_user)):
+    return user_sessions.get_owned(get_engine(), session_id, user_id)
+
+
+@router.patch('/{session_id}')
+def rename(session_id: UUID, payload: user_sessions.SessionName, user_id: UUID = Depends(require_user)):
+    return user_sessions.rename(get_engine(), session_id, user_id, payload)
 
 
 @router.post('/{session_id}/equipment/identify', response_model=EquipmentState)

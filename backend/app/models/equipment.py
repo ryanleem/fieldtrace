@@ -30,6 +30,8 @@ class Equipment(Base):
 class EquipmentSession(Base):
     __tablename__ = "equipment_sessions"
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    owner_user_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    session_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     entered_equipment_text: Mapped[str | None] = mapped_column(Text)
     raw_ocr_text: Mapped[str] = mapped_column(Text, default="")
     parsed_ocr_fields: Mapped[dict] = mapped_column(JSONB, default=dict)
@@ -44,6 +46,7 @@ class EquipmentSession(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
     __table_args__ = (
+        CheckConstraint("owner_user_id IS NULL OR (session_name IS NOT NULL AND session_name = btrim(session_name) AND char_length(session_name) BETWEEN 1 AND 100)", name="owned_session_name"),
         CheckConstraint("confirmation_status IN ('UNCONFIRMED','SUGGESTED','CONFIRMED','REJECTED')"),
         CheckConstraint("(confirmation_status = 'CONFIRMED') = (confirmed_equipment_id IS NOT NULL)"),
         CheckConstraint("confirmed_equipment_id IS NULL OR selected_candidate = confirmed_equipment_id"),

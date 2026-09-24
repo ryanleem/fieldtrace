@@ -1,18 +1,26 @@
-import {useEffect,useRef,useState} from 'react'
-import {apiUrl,json,request,safeLink} from './api'
-import type {Citation,Equipment,Photo,Replay,Result,Trace,Visual} from './types'
+import {useEffect,useRef,useState,type ReactNode} from 'react'
+import {json,request,safeLink} from './api'
+import PrivatePhoto from './PrivatePhoto'
+import NameDialog from './NameDialog'
+import type {Citation,Equipment,Photo,Replay,Result,Trace,Visual,SessionMeta} from './types'
 
 const labels=['front','back','left','right','top','bottom','nameplate','close_up','additional']
 const emptyVisual:Visual={uploaded_images:[],aggregated_visual_findings:[],normalized_visual_findings:[]}
 type Pending={key:string;file:File;url:string;view:string;note:string;ocr:boolean}
-const demo=import.meta.env.VITE_DEMO_MODE==='true'
 const emptyResult:Result={status:'not_run',message:'',primary_cause:null,alternative_causes:[],confidence:'LOW',recommended_actions:[],technical_claims:[],next_question:'',missing_information:[],sources:[],conflicts:[]}
 
 function Badge({value}:{value:string}){return <span className={`badge ${value.toLowerCase()}`}>{value}</span>}
 function SectionTitle({number,title,detail}:{number:string;title:string;detail?:string}){return <div className="section-heading"><span className="step-number">{number}</span><div><h2>{title}</h2>{detail&&<p>{detail}</p>}</div></div>}
 
-export default function App(){
-  const [sid,setSid]=useState(()=>demo?'':sessionStorage.getItem('fieldtrace.session')||'')
+export default function App({userId,demo=false,account}:{userId:string;demo?:boolean;account?:ReactNode}){
+  const storageKey=`fieldtrace.session.${userId}`
+  const [sessionName,setSessionName]=useState(''),[page,setPage]=useState<'workspace'|'history'>('workspace')
+  const [history,setHistory]=useState<SessionMeta[]>([]),[hasMore,setHasMore]=useState(false)
+  const [namePrompt,setNamePrompt]=useState<{initial:string;rename:boolean}|null>(null)
+  const nameResolver=useRef<((name:string|null)=>void)|null>(null)
+  function askName(initial='',rename=false){return new Promise<string|null>(resolve=>{nameResolver.current=resolve;setNamePrompt({initial,rename})})}
+  function resolveName(value:string|null){const resolve=nameResolver.current;nameResolver.current=null;setNamePrompt(null);resolve?.(value)}
+  const [sid,setSid]=useState(()=>demo?'':sessionStorage.getItem(storageKey)||'')
   const sessionId=useRef(sid)
   const sessionCreation=useRef<Promise<string>|null>(null)
   const working=useRef(false)
@@ -39,9 +47,12 @@ export default function App(){
   const newestRun=trace?.retrieved_evidence_history.at(-1)?.run_id
   const addEvent=(event:string)=>setEvents(old=>[...old,event])
   async function createSession(){
-    const eq=await request<Equipment>('/sessions',{method:'POST'})
+    const name=await askName()
+    if(name===null)throw new DOMException('Session creation cancelled','AbortError')
+    const eq=await request<Equipment & SessionMeta>('/sessions',json({session_name:name}))
+    setSessionName(eq.session_name)
     sessionId.current=eq.session_id
-    sessionStorage.setItem('fieldtrace.session',eq.session_id)
+    sessionStorage.setItem(storageKey,eq.session_id)
     setSid(eq.session_id);setEquipment(eq)
     return eq.session_id
   }
@@ -57,8 +68,8 @@ export default function App(){
   }
   async function refresh(id=sessionId.current){
     if(!id||demo)return
-    const [eq,v,t]=await Promise.all([request<Equipment>(`/sessions/${id}/equipment`),request<Visual>(`/sessions/${id}/visual-findings`),request<Trace>(`/sessions/${id}/troubleshooting`)])
-    setEquipment(eq);setMatch(eq.confirmed_equipment_id||eq.ranked_candidates[0]?.candidate_id||'');setVisual(v);setTrace(t)
+    const [meta,eq,v,t]=await Promise.all([request<SessionMeta>(`/sessions/${id}`),request<Equipment>(`/sessions/${id}/equipment`),request<Visual>(`/sessions/${id}/visual-findings`),request<Trace>(`/sessions/${id}/troubleshooting`)])
+    setSessionName(meta.session_name);setEquipment(eq);setMatch(eq.confirmed_equipment_id||eq.ranked_candidates[0]?.candidate_id||'');setVisual(v);setTrace(t)
     return {eq,v,t}
   }
   async function work(label:string,operation:()=>Promise<void>){
@@ -66,10 +77,10 @@ export default function App(){
     if(working.current)return
     working.current=true
     setBusy(label);setError('');setNotice('')
-    try{await operation()}catch(e){setError(e instanceof Error?e.message:'The request failed. Your workspace is retained.')}finally{working.current=false;setBusy('')}
+    try{await operation()}catch(e){if(!(e instanceof DOMException&&e.name==='AbortError'))setError(e instanceof Error?e.message:'The request failed. Your workspace is retained.')}finally{working.current=false;setBusy('')}
   }
-  useEffect(()=>{if(sid&&!demo)void work('Restoring session…',async()=>{await refresh(sid)})},[]) // restored once; mutations refresh explicitly
-  useEffect(()=>()=>{for(const p of pendingRef.current)URL.revokeObjectURL(p.url)},[])
+  useEffect(()=>{if(sid&&!demo)void work('Restoring session…',async()=>{try{const saved=await refresh(sid);setModel(saved?.eq.entered_equipment_text||'')}catch(e){sessionStorage.removeItem(storageKey);sessionId.current='';setSid('');throw e}})},[]) // restored once; mutations refresh explicitly
+  useEffect(()=>()=>{nameResolver.current?.(null);for(const p of pendingRef.current)URL.revokeObjectURL(p.url)},[])
   useEffect(()=>{if(source){dialog.current?.showModal()}else{dialog.current?.close()}},[!!source])
   function clearPending(){pending.forEach(p=>URL.revokeObjectURL(p.url));setPending([])}
   function resetDrafts(){
@@ -80,7 +91,22 @@ export default function App(){
   function resetReplay(){resetDrafts();setReplay(null);setEquipment(null);setVisual(emptyVisual);setTrace(null);setSid('');setEvents([]);setError('')}
   function start(){void work('Creating session…',async()=>{
     await createSession()
-    resetDrafts();setTrace(null);setVisual(emptyVisual);setEvents(['Session started'])
+    resetDrafts();setTrace(null);setVisual(emptyVisual);setEvents(['Session started']);setPage('workspace')
+  })}
+  async function listSessions(more=false){
+    const rows=await request<SessionMeta[]>(`/sessions?limit=50&offset=${more?history.length:0}`)
+    setHistory(old=>more?[...old,...rows]:rows);setHasMore(rows.length===50);setPage('history')
+  }
+  function reopen(id:string){void work('Opening saved session…',async()=>{
+    const saved=await refresh(id)
+    resetDrafts();sessionId.current=id;setSid(id);sessionStorage.setItem(storageKey,id)
+    setModel(saved?.eq.entered_equipment_text||'');setEvents([]);setPage('workspace')
+  })}
+  function renameSession(row:SessionMeta){void work('Renaming session…',async()=>{
+    const name=await askName(row.session_name,true);if(name===null)return
+    await request(`/sessions/${row.id}`,{...json({session_name:name}),method:'PATCH'})
+    if(row.id===sessionId.current)setSessionName(name)
+    await listSessions()
   })}
   function addFiles(files:FileList|null){
     if(!files)return
@@ -156,15 +182,19 @@ export default function App(){
   })}
   const steps=[['01','Equipment',confirmed],['02','Visible evidence',photos.some(p=>['completed','no_clear_abnormality'].includes(p.analysis_status))],['03','Troubleshooting',usable],['04','Follow-up',!!trace?.follow_up_answers.length]] as const
   return <>
-    <header className="topbar"><a className="brand" href="/" aria-label="FieldTrace home"><span className="brand-mark">F<span>↗</span></span><span>FieldTrace<small>MAINTENANCE INTELLIGENCE</small></span></a><div className="top-meta"><span className="prototype-label">ABB ACCELERATOR · PROTOTYPE</span><span className="live-dot"/>{demo?'RECORDED REPLAY':'LOCAL WORKSPACE'}</div></header>
+    <header className="topbar"><a className="brand" href="/" aria-label="FieldTrace home"><span className="brand-mark">F<span>↗</span></span><span>FieldTrace<small>MAINTENANCE INTELLIGENCE</small></span></a><div className="top-meta"><span className="prototype-label">ABB ACCELERATOR · PROTOTYPE</span><span className="live-dot"/>{demo?'RECORDED REPLAY':'TECHNICIAN WORKSPACE'}{!demo&&<nav className="account-nav" aria-label="Account"><button disabled={!!busy} onClick={()=>void work('Loading sessions…',async()=>{await listSessions()})}>My Sessions</button><button disabled={!!busy} onClick={()=>setPage('workspace')}>Workspace</button>{account}</nav>}{demo&&<a href="/">Log in for live use</a>}</div></header>
     {demo&&<aside className="replay-banner"><strong>DEMO REPLAY · Not a fresh analysis</strong><span>Prepared records only. Live upload, OCR and model calls are disabled.</span><div>{['acs880','motor','visual'].map((k,i)=><button key={k} disabled={!!busy} onClick={()=>void loadReplay(k)}>{['ACS880 fault 5091','Motor uncertainty fixture','Recorded visible finding'][i]}</button>)}<button disabled={!!busy} onClick={resetReplay}>Reset demo</button></div>{replay&&<p>{replay.disclosure}</p>}</aside>}
+    {namePrompt&&<NameDialog initial={namePrompt.initial} rename={namePrompt.rename} onDone={resolveName}/>}
     <main>
+      {page==='history'&&<section className="panel session-history"><h1>My Sessions</h1>{!history.length?<><p>No troubleshooting sessions yet.</p><button className="primary" disabled={!!busy} onClick={start}>Start a troubleshooting session</button></>:history.map(row=><article className="session-card" key={row.id}><h2><button className="session-title" disabled={!!busy} onClick={()=>reopen(row.id)}>{row.session_name}</button></h2><p>{row.confirmed_model||'Equipment unconfirmed'} · {row.symptom_summary||'No reported symptom'}</p><p>{row.result_status.replaceAll('_',' ')}{row.confidence?` · ${row.confidence}`:''}</p><small>Created {new Date(row.created_at).toLocaleString()} · Updated {new Date(row.updated_at).toLocaleString()}</small><div><button className="primary" disabled={!!busy} onClick={()=>reopen(row.id)}>Continue troubleshooting</button><button disabled={!!busy} onClick={()=>renameSession(row)}>Rename</button></div></article>)}{hasMore&&<button disabled={!!busy} onClick={()=>void work('Loading sessions…',async()=>{await listSessions(true)})}>Load more sessions</button>}</section>}
+      <div hidden={page!=='workspace'}>
       <section className="page-heading"><div><p className="eyebrow">TECHNICIAN WORKSPACE</p><h1>From observation<br className="mobile-break"/> to evidence.</h1><p>Equipment, photo observations and symptoms connected to cited ABB evidence.</p></div><button className="primary new-session" disabled={!!busy||demo} onClick={start}><span>＋</span> Start new troubleshooting session</button></section>
-      <nav className="progress" aria-label="Troubleshooting steps">{steps.map(([n,title,done])=><div className={done?'done':''} key={n}><span>{done?'✓':n}</span>{title}</div>)}<span className="session-status">{sid?`Session ${sid.slice(0,8)} · ${fixture?'Temporary reasoning fixture':confirmed?'Equipment confirmed':'Awaiting confirmation'}`:'No active session'}</span></nav>
+      <nav className="progress" aria-label="Troubleshooting steps">{steps.map(([n,title,done])=><div className={done?'done':''} key={n}><span>{done?'✓':n}</span>{title}</div>)}<span className="session-status">{sid?`Session ${sessionName||sid.slice(0,8)} · ${fixture?'Temporary reasoning fixture':confirmed?'Equipment confirmed':'Awaiting confirmation'}`:'No active session'}</span></nav>
+      </div>
       {error&&<div className="alert error" role="alert"><strong>Request not completed</strong><p>{error}</p>{sid&&!demo&&<button disabled={!!busy} onClick={()=>void work('Refreshing session…',async()=>{await refresh()})}>Refresh session status</button>}</div>}
       {notice&&<p role="status">{notice}</p>}
       {busy&&<div className="working" role="status"><span className="spinner"/><div>{busy}{busy.startsWith('Checking ABB')&&<small>Search, evidence review and claim verification can take a minute. Your session stays here; no photo processing is repeated.</small>}</div></div>}
-      <div className="workspace">
+      <div className="workspace" hidden={page!=='workspace'}>
         <div className="intake">
           <section className="panel"><SectionTitle number="01" title="Equipment & photos" detail="Add a clear nameplate photo and areas showing visible damage."/>
             <fieldset disabled={!!busy||demo}>
@@ -175,10 +205,10 @@ export default function App(){
               <button className="secondary full-width" onClick={identify}>{confirmed?'Re-detect / correct equipment':'Detect equipment / read nameplate'}</button>
             </fieldset>
             {equipment&&<div className="equipment-result"><div className="row"><p className="eyebrow">{fixture?'REASONING FIXTURE':confirmed?'CONFIRMED EQUIPMENT':'DETECTED EQUIPMENT'}</p>{equipment.confidence&&<Badge value={equipment.confidence}/>}</div><h3>{confirmed||fixture?equipment.confirmed_model:equipment.ranked_candidates[0]?.candidate_model||'No supported match yet'}</h3><p>{confirmed||fixture?equipment.confirmed_equipment_family:'Review the match before continuing.'}</p>{equipment.mismatch_warnings.map((w,i)=><p className="warning-note" key={i}>{w}</p>)}{!confirmed&&equipment.ranked_candidates.length>0&&<fieldset disabled={!!busy||demo}><label>Choose match<select value={match} onChange={e=>setMatch(e.target.value)}>{equipment.ranked_candidates.map(c=><option key={c.candidate_id} value={c.candidate_id}>{c.candidate_model} · {c.match_level}</option>)}</select></label><button className="primary full-width" disabled={!match} onClick={confirm}>Confirm equipment</button></fieldset>}{equipment.raw_ocr_text&&<details><summary>Read nameplate text</summary><pre>{equipment.raw_ocr_text}</pre></details>}</div>}
-            {!sid&&<p className="hint">Add photos, model text or a symptom now. Detect equipment will save a session automatically.</p>}
+            {!sid&&<p className="hint">Add photos, model text or a symptom now. Detect equipment will ask for a session name and save your drafts.</p>}
           </section>
           <section className="panel"><SectionTitle number="02" title="Visible findings" detail="Photo observations are visual evidence only, not a diagnosis."/>
-            {photos.length>0&&<div className="saved-photos">{photos.map(p=><figure key={p.id}><img src={demo?replay?.image_urls?.[p.id]:apiUrl(`/sessions/${sid}/images/${p.id}/file`)} alt={p.original_filename}/><figcaption>{p.view_label.replace('_','-')}<small>{p.analysis_status.replaceAll('_',' ')}</small></figcaption>{p.user_note&&<p className="hint">Technician note: {p.user_note}</p>}</figure>)}</div>}
+            {photos.length>0&&<div className="saved-photos">{photos.map(p=><figure key={p.id}><>{demo?<img src={replay?.image_urls?.[p.id]} alt={p.original_filename}/>:<PrivatePhoto path={`/sessions/${sid}/images/${p.id}/file`} alt={p.original_filename}/>}</><figcaption>{p.view_label.replace('_','-')}<small>{p.analysis_status.replaceAll('_',' ')}</small></figcaption>{p.user_note&&<p className="hint">Technician note: {p.user_note}</p>}</figure>)}</div>}
             {findings.map(f=><article className="finding" key={f.id}><span className="finding-marker"/><div><strong>{f.issue_type.replaceAll('_',' ')}</strong><p>{f.description}</p><small>Visual confidence: {f.visual_confidence.toUpperCase()} · {(f.supporting_image_ids||[f.image_id]).map(id=>photos.find(p=>p.id===id)?.view_label.replace('_','-')||'recorded image').join(', ')}</small></div></article>)}
             {!findings.length&&photos.length>0&&photos.every(p=>p.analysis_status==='no_clear_abnormality')?<p className="neutral-message">No obvious visible abnormality detected in these images.</p>:!findings.length&&<p className="empty-copy">{photos.some(p=>p.analysis_status==='failed')?'Image analysis is unavailable. No findings have been substituted.':'Uploaded photos will appear here with their visible observations.'}</p>}
             {photos.some(p=>p.analysis_status==='failed')&&<p className="warning-note">Some images failed analysis. Retry when the provider is available.</p>}

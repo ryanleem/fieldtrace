@@ -210,6 +210,8 @@ def test_api_upload_analyze_get_and_bad_metadata(inspection_db, monkeypatch):
     monkeypatch.setattr(inspection, 'get_settings', lambda: settings)
     app = FastAPI()
     app.include_router(inspection.router)
+    from conftest import authenticated_client
+    authenticated_client(app, monkeypatch, engine, sid)
     app.dependency_overrides[get_vision_provider] = lambda: MockVision()
     with TestClient(app) as client:
         files = [('images', ('front.png', photo(), 'image/png')), ('images', ('detail.png', photo(), 'image/png'))]

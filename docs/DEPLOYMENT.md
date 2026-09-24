@@ -5,9 +5,10 @@ Vercel serves the static React/Vite frontend. A Railway Docker service runs Fast
 and connects to Railway PostgreSQL with pgvector. Backend Root Directory is the
 repository root; Vercel Root Directory is `frontend`. Do not deploy FastAPI to Vercel.
 
-The prototype lacks authentication and tenant isolation. The production guard below
-limits abuse but cannot identify authorized users. Use authorized demo data and
-supervised access; this is not production security.
+The currently deployed version predates the local authentication changes described
+below. After review and deployment, live session access requires Supabase Auth and
+an owner check in Railway PostgreSQL. Use authorized demo data and supervised access;
+this is still a prototype, not production security.
 
 ## Current deployed environment
 
@@ -29,6 +30,10 @@ A live smoke test verified equipment confirmation, same-session follow-up, and t
 Public backend endpoints can consume provider credits. **CORS is not authentication**:
 direct HTTP clients can bypass browser origin checks. Never put a secret token or API
 key in Vite / `VITE_*` variables; all provider credentials stay on the backend.
+
+The authenticated version requires login for session APIs and `/search`. Signup
+still permits new users to consume the shared demo budget: login is not a spending
+limit. Keep the existing rate limits and provider budget controls in place.
 
 Set `APP_ENV=production` on Railway (also the Docker/cloud-launcher default). This:
 
@@ -54,8 +59,10 @@ Optional backend variables: `DEMO_REQUESTS_PER_MINUTE=120`,
 `DEMO_WRITES_PER_HOUR=60`, `DEMO_PROVIDER_ACTIONS_PER_HOUR=8`,
 `DEMO_UPLOAD_QUOTA_BYTES=268435456`. Run **one replica and one Uvicorn worker**;
 the launcher pins one worker. Counters are in memory and reset on restart. They are
-only prototype safeguards: an attacker can exhaust the shared budget, access a known
-session ID, or consume credits within the limits. Do not store sensitive demo data.
+only prototype safeguards: an attacker can exhaust the shared budget or an authenticated
+user can consume credits within the limits. The old deployed version also allows access
+by known session ID; the reviewed authenticated version rejects other users regardless
+of UUID knowledge. Do not store sensitive demo data.
 The upload quota does not bound database growth, logs or model-cache size.
 
 Use a restricted, low-budget provider project/key if possible, with provider-side
@@ -249,3 +256,105 @@ vision use paid calls, so repeat these checks only when needed.
 
 Local secrets stay ignored by Git and excluded by the Docker context allowlist.
 The repository scanner is heuristic review, not proof of absence of secrets.
+
+
+## Authentication and saved sessions (pending review; not deployed)
+
+Supabase manages accounts, passwords, email confirmation, refresh and logout only.
+All FieldTrace sessions, equipment, photos, findings, runs and vectors stay in Railway.
+No Supabase application tables, database migration to Supabase, or service-role key
+are needed. The browser uses the official Supabase SDK. FastAPI verifies ES256/RS256
+JWT signatures against the project's fixed JWKS endpoint, issuer, `authenticated`
+audience, expiry, issued-at, user UUID and authenticated role. Anonymous Supabase
+users and legacy HS256 signing keys are not supported by this implementation.
+
+Supabase documents the [public signing-key endpoint](https://supabase.com/docs/guides/auth/signing-keys).
+Choose an asymmetric signing key in the Supabase project before configuring this release.
+
+### Configuration after approval
+
+1. Create/select a Supabase project, enable email/password sign-in, and configure
+   email confirmation and the Site URL/allowed redirect URLs for the production
+   Vercel origin and your local development origin. Test email delivery explicitly.
+2. Backend Railway variables: `SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co`
+   and `SUPABASE_JWT_AUDIENCE=authenticated` (default). The backend needs only public
+   signing keys, not the anon key, JWT signing secret or service-role key.
+3. Frontend build variables: `VITE_SUPABASE_URL` with the same URL and
+   `VITE_SUPABASE_ANON_KEY` with a **public publishable key or legacy anon key**.
+   Keep `VITE_API_BASE_URL` and `VITE_DEMO_MODE=false`. Never use a service-role or
+   secret key as this value. Rebuild Vercel after changing public configuration.
+4. Keep the exact production frontend origin in `CORS_ALLOWED_ORIGINS`. CORS now
+   permits the Authorization header and PATCH; it still does not authenticate users.
+5. Keep provider keys, DATABASE_URL and filesystem configuration on Railway only.
+
+Missing auth configuration fails closed. The login screen explains unavailable
+configuration and offers the public recorded demo at `/?demo=true`. This path is
+explicitly labeled and does not call live session, OCR, vision or reasoning APIs.
+
+### Additive database migration
+
+Back up the database before the approved release. **Do not reset it or re-ingest.**
+The migration adds nullable `owner_user_id` (UUID) and `session_name` (text) to
+`equipment_sessions`, a name constraint, an owner/updated-at index, and child-table
+triggers that update the existing parent timestamp after changes. No existing rows
+are deleted. Existing ownerless sessions remain stored but cannot be accessed or
+claimed through authenticated endpoints. Any future legacy ownership assignment
+requires a separate, audited administrative decision; this release adds no claim API.
+
+For the existing Railway database, apply the migration from the **new reviewed
+image**, before routing traffic to the authenticated backend. After deployment is
+approved, configure this as a Railway pre-deploy command for that release:
+
+```sh
+PYTHONPATH=backend python -m app.db.migrate_user_sessions
+```
+
+It is transactional, uses an advisory lock and is safe to rerun. It must run on
+Railway, where the private DATABASE_URL resolves. Do not use `railway run` expecting
+remote execution. For a brand-new empty database, first initialize the existing
+Step 1–4 tables with the existing setup, then apply the migration before use.
+
+Local PowerShell (after initializing the existing tables):
+
+```powershell
+$env:PYTHONPATH='backend'
+.\.venv\Scripts\python.exe -m app.db.migrate_user_sessions
+```
+
+Release order after review: back up → apply additive migration → deploy authenticated
+backend → deploy configured frontend → test two separate users, email confirmation,
+private photo/citation access, session history and follow-up. There may be a brief
+login-required window for old clients; no live infrastructure was changed during
+implementation. Do not roll back to an unauthenticated backend once private sessions
+exist, because the old UUID-only routes would expose them.
+
+### Session API and limitations
+
+- `POST /sessions` requires `{ "session_name": "ACS880 Fault 5091" }`; verified JWT
+  identity sets the owner. Extra ownership fields are rejected.
+- `GET /sessions?limit=50&offset=0` lists only your sessions, most recently updated
+  first (maximum page size 100).
+- `GET /sessions/{id}` returns owned metadata; `PATCH /sessions/{id}` renames it.
+- Every existing child route requires the same owner check, including image bytes,
+  visual context, source excerpts, troubleshooting runs and follow-ups. Missing and
+  foreign IDs both return 404. `/health` remains public; production audit restrictions
+  and upload/path limits still apply.
+
+Names are trimmed, 1–100 characters; duplicate names are allowed. The name dialog
+creates nothing until confirmed. Cancelling or failure preserves drafts. Lazy creation
+is shared by concurrent actions. An explicit new case resets drafts only after success.
+My Sessions reopens saved state using GETs only; it does not repeat paid analysis.
+Photo bytes are fetched with Authorization and displayed through temporary object URLs,
+which are revoked on unmount. Tokens are never put in image URLs or application logs.
+
+The Supabase SDK stores browser auth state to restore sessions; XSS or a compromised
+browser can steal it. Keep dependencies reviewed and use trusted devices. Logout clears
+local auth/workspace, but an already issued bearer JWT can remain valid until expiry;
+local JWKS verification does not provide immediate revocation. Set a suitably short
+access-token lifetime in Supabase. Password reset and account administration remain
+Supabase-managed and are not added as FieldTrace product features here. No real
+Supabase account/email flow was exercised by mocked automated tests; verify it before
+production release. The global single-instance rate limiter remains shared by all users.
+
+For exact Supabase URLs, email settings and the real two-user validation procedure,
+see [Supabase readiness review](SUPABASE-READINESS.md).

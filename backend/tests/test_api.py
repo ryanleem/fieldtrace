@@ -8,7 +8,10 @@ from app.main import app
 
 
 @pytest.mark.corpus
-def test_api_ingestion_and_evidence_only_search():
+def test_api_ingestion_and_evidence_only_search(monkeypatch):
+    from app.auth import require_user
+    from uuid import uuid4
+    monkeypatch.setitem(app.dependency_overrides, require_user, lambda: uuid4())
     entry = json.loads((get_settings().manuals_dir / "manifest.json").read_text(encoding="utf-8"))[0]
     with TestClient(app) as client:
         health = client.get("/health")

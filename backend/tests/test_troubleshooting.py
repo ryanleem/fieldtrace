@@ -401,6 +401,8 @@ def test_provider_failure_persisted_without_fake_answer(troubleshooting_db):
 def test_api_update_symptom_followup_and_revision_conflict(troubleshooting_db, monkeypatch):
     engine, settings, sid, embedder = troubleshooting_db
     app = FastAPI(); app.include_router(api.router)
+    from conftest import authenticated_client
+    authenticated_client(app, monkeypatch, engine, sid)
     monkeypatch.setattr(api, 'get_engine', lambda: engine)
     monkeypatch.setattr(api, 'get_settings', lambda: settings)
     monkeypatch.setattr(service, 'retrieve', lambda *args: [evidence()])

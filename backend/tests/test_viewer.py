@@ -36,6 +36,8 @@ def test_image_view_enforces_session_and_safe_stored_path(inspection_db,monkeypa
     engine,settings,sid,_=inspection_db
     image=upload(engine,settings,sid,view_label='front')
     app=FastAPI();app.include_router(viewer.router)
+    from conftest import authenticated_client
+    authenticated_client(app, monkeypatch, engine, sid)
     monkeypatch.setattr(viewer,'get_engine',lambda:engine);monkeypatch.setattr(viewer,'get_settings',lambda:settings)
     client=TestClient(app);path=f'/sessions/{sid}/images/{image["id"]}/file'
     response=client.get(path)

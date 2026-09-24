@@ -1,18 +1,24 @@
+import {mockAuth,nameSession} from './auth-fixture'
 import {test,expect,Page} from '@playwright/test'
 import fs from 'node:fs'
 const replay=JSON.parse(fs.readFileSync('public/demo.json','utf8'))
 const sid='10000000-0000-0000-0000-000000000001',rid='20000000-0000-0000-0000-000000000001'
-async function mockApi(page:Page,mode='success'){
+export async function mockApi(page:Page,mode='success'){
+ await mockAuth(page)
  const eq={...replay.acs880.equipment,session_id:sid,confirmation_status:'UNCONFIRMED',confirmed_equipment_id:null,confirmed_model:null,confidence:null,ranked_candidates:[] as any[]}
  const v={uploaded_images:[] as any[],aggregated_visual_findings:[] as any[],normalized_visual_findings:[]}
  const trace={...structuredClone(replay.acs880.trace),session_id:sid,revision:0,reported_symptoms:[],follow_up_answers:[],checks_completed:[],measurements:[],retrieved_evidence_history:[],result:{...replay.weak.trace.result,status:'not_run',next_question:''}}
+ let sessionName='Case'
+ const meta=()=>({id:sid,session_id:sid,session_name:sessionName,created_at:new Date().toISOString(),updated_at:new Date().toISOString(),confirmed_model:eq.confirmed_model,symptom_summary:trace.reported_symptoms.join('; '),confidence:trace.result.confidence,result_status:trace.result.status})
  const calls:{path:string;method:string;body:string}[]=[];let failures=mode==='http-failure'?1:0
  await page.route('**/api/**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname.replace('/api',''),method=req.method(),body=req.postData()||'';calls.push({path,method,body})
   const ok=(data:any)=>route.fulfill({json:data})
   if(path.endsWith('/file'))return route.fulfill({path:'public/replay-photo-01.jpg',contentType:'image/jpeg'})
   if(path.includes('/sources/'))return ok(replay.acs880.source_text[path.split('/').at(-1)!])
-  if(path==='/sessions'&&method==='POST')return ok(eq)
+  if(path==='/sessions'&&method==='POST'){sessionName=JSON.parse(body).session_name;return ok({...eq,session_name:sessionName})}
+  if(path==='/sessions'&&method==='GET')return ok([{...meta(),id:sid}])
+  if(path===`/sessions/${sid}`){if(method==='PATCH')sessionName=JSON.parse(body).session_name;return ok(meta())}
   if(path.endsWith('/equipment/identify')){
    eq.ranked_candidates=[{candidate_id:'abb-acs880-01',candidate_model:'ACS880-01',match_level:'HIGH',equipment_family:'ACS880'}];eq.confirmation_status='SUGGESTED';eq.identification_revision=1
    if(mode==='mismatch')eq.mismatch_warnings=['Entered equipment differs from visible nameplate text.']
@@ -49,7 +55,7 @@ async function mockApi(page:Page,mode='success'){
  return {calls,trace,v}
 }
 async function confirm(page:Page){
- await page.getByRole('button',{name:'Start new troubleshooting session'}).click()
+ await page.getByRole('button',{name:'Start new troubleshooting session'}).click();await nameSession(page)
  await page.getByLabel('Model text, if known').fill('ABB ACS880-01')
  await page.getByRole('button',{name:'Detect equipment / read nameplate'}).click()
  await page.getByRole('button',{name:'Confirm equipment',exact:true}).click()
@@ -80,6 +86,7 @@ test('detect creates one session lazily, preserves drafts, and gates run until c
  await page.getByLabel('Add equipment photos',{exact:true}).setInputFiles('public/replay-photo-01.jpg')
  await page.getByLabel('View for replay-photo-01.jpg').selectOption('nameplate')
  await page.getByRole('button',{name:'Detect equipment / read nameplate'}).click()
+ if(await page.getByRole('dialog',{name:'Name your troubleshooting session'}).isVisible())await nameSession(page)
  await expect(page.getByRole('button',{name:'Confirm equipment',exact:true})).toBeVisible()
  await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('Drive shows fault 5091')
  await expect(page.getByLabel('Model text, if known')).toHaveValue('ABB ACS880-01')
@@ -104,13 +111,15 @@ test('failed lazy session creation preserves text/photos and can be retried',asy
  await page.getByLabel('Model text, if known').fill('ACS880-01')
  await page.getByLabel('Add equipment photos',{exact:true}).setInputFiles('public/replay-photo-01.jpg')
  await page.getByRole('button',{name:'Detect equipment / read nameplate'}).click()
+ if(await page.getByRole('dialog',{name:'Name your troubleshooting session'}).isVisible())await nameSession(page)
  await expect(page.getByRole('alert')).toBeVisible()
  await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('Fault 5091')
  await expect(page.getByLabel('Model text, if known')).toHaveValue('ACS880-01')
  await expect(page.locator('.pending-photo')).toHaveCount(1)
- expect(await page.evaluate(()=>sessionStorage.getItem('fieldtrace.session'))).toBeNull()
+ expect(await page.evaluate(()=>sessionStorage.getItem('fieldtrace.session.10000000-0000-0000-0000-000000000099'))).toBeNull()
  expect(mock.calls.some(c=>c.path.includes('/equipment/identify'))).toBe(false)
  await page.getByRole('button',{name:'Detect equipment / read nameplate'}).click()
+ if(await page.getByRole('dialog',{name:'Name your troubleshooting session'}).isVisible())await nameSession(page)
  await expect(page.getByRole('button',{name:'Confirm equipment',exact:true})).toBeVisible();expect(creations).toBe(2)
 })
 
@@ -124,6 +133,7 @@ test('concurrent detect/reset clicks cannot create multiple sessions',async({pag
  await page.getByRole('button',{name:'Detect equipment / read nameplate'}).evaluate((button:HTMLButtonElement)=>{
   button.click();button.click();document.querySelector<HTMLButtonElement>('.new-session')!.click()
  })
+ await nameSession(page)
  await expect.poll(()=>creations).toBe(1)
  await expect(page.getByRole('button',{name:'Start new troubleshooting session'})).toBeDisabled()
  release();await expect(page.getByRole('button',{name:'Confirm equipment',exact:true})).toBeVisible()
@@ -136,9 +146,9 @@ test('explicit new session resets fresh drafts only after successful creation',a
  await page.goto('/');await page.getByLabel('Model text, if known').fill('ACS880-01')
  await page.getByLabel('What problem are you seeing?').fill('Fault 5091')
  await page.getByLabel('Add equipment photos',{exact:true}).setInputFiles('public/replay-photo-01.jpg')
- await page.getByRole('button',{name:'Start new troubleshooting session'}).click()
+ await page.getByRole('button',{name:'Start new troubleshooting session'}).click();await nameSession(page)
  await expect(page.getByRole('alert')).toBeVisible();await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('Fault 5091')
- await page.getByRole('button',{name:'Start new troubleshooting session'}).click()
+ await page.getByRole('button',{name:'Start new troubleshooting session'}).click();await nameSession(page)
  await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('')
  await expect(page.getByLabel('Model text, if known')).toHaveValue('');await expect(page.locator('.pending-photo')).toHaveCount(0)
  await expect(page.getByRole('button',{name:'Run troubleshooting'})).toBeDisabled()
@@ -146,7 +156,7 @@ test('explicit new session resets fresh drafts only after successful creation',a
 
 test('complete multi-photo, identification, result, citation and follow-up workflow',async({page})=>{
  const mock=await mockApi(page);await page.goto('/')
- await page.getByRole('button',{name:'Start new troubleshooting session'}).click()
+ await page.getByRole('button',{name:'Start new troubleshooting session'}).click();await nameSession(page)
  await page.getByLabel('Add equipment photos',{exact:true}).setInputFiles([
   {name:'front.jpg',mimeType:'image/jpeg',buffer:fs.readFileSync('public/replay-photo-01.jpg')},
   {name:'nameplate.jpg',mimeType:'image/jpeg',buffer:fs.readFileSync('public/replay-photo-01.jpg')}])
@@ -199,7 +209,7 @@ test('transport failure preserves session and symptom, refresh then retry succee
  await page.getByRole('button',{name:'Run troubleshooting'}).click()
  await expect(page.getByRole('alert')).toContainText('temporarily unavailable')
  await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('Fault 5091')
- expect(await page.evaluate(()=>sessionStorage.getItem('fieldtrace.session'))).toBe(sid)
+ expect(await page.evaluate(()=>sessionStorage.getItem('fieldtrace.session.10000000-0000-0000-0000-000000000099'))).toBe(sid)
  await page.getByRole('button',{name:'Refresh session status'}).click()
  await page.getByRole('button',{name:'Run troubleshooting'}).click()
  await expect(page.locator('.cause-title')).toBeVisible();expect(mock.trace.reported_symptoms).toContain('Fault 5091')
@@ -220,7 +230,7 @@ for(const [label,status] of [['quota / rate limit',429],['database unavailable',
   await page.getByRole('button',{name:'Run troubleshooting'}).click()
   await expect(page.getByRole('alert')).toBeVisible();await expect(page.locator('.cause-title')).toHaveCount(0)
   await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('Fault 5091')
-  expect(await page.evaluate(()=>sessionStorage.getItem('fieldtrace.session'))).toBe(sid)
+  expect(await page.evaluate(()=>sessionStorage.getItem('fieldtrace.session.10000000-0000-0000-0000-000000000099'))).toBe(sid)
   await page.getByRole('button',{name:'Run troubleshooting'}).click();await expect(page.locator('.cause-title')).toBeVisible()
  })
 }
@@ -249,7 +259,7 @@ test('new session clears result, photos, follow-up and measurement draft',async(
  await page.getByLabel('Update for this session').fill('old answer');await page.getByLabel('Entry type').selectOption('measurement')
  await page.getByLabel('value',{exact:true}).fill('92')
  await page.getByLabel('Add equipment photos',{exact:true}).setInputFiles('public/replay-photo-01.jpg')
- await page.getByRole('button',{name:'Start new troubleshooting session'}).click()
+ await page.getByRole('button',{name:'Start new troubleshooting session'}).click();await nameSession(page)
  await expect(page.locator('.cause-title')).toHaveCount(0);await expect(page.locator('.pending-photo')).toHaveCount(0)
  await expect(page.getByLabel('What problem are you seeing?')).toHaveValue('')
  await page.getByLabel('Model text, if known').fill('ACS880-01');await page.getByRole('button',{name:'Re-detect / correct equipment'}).click()
@@ -268,9 +278,46 @@ test('vision failure retains photo and offers retry without fake findings',async
 })
 test('mismatch warning and responsive intake remain usable',async({page})=>{
  await page.setViewportSize({width:390,height:844});await mockApi(page,'mismatch');await page.goto('/')
- await page.getByRole('button',{name:'Start new troubleshooting session'}).click();await page.getByLabel('Model text, if known').fill('ACS580-01')
+ await page.getByRole('button',{name:'Start new troubleshooting session'}).click();await nameSession(page);await page.getByLabel('Model text, if known').fill('ACS580-01')
  await page.getByRole('button',{name:'Detect equipment / read nameplate'}).click()
+ if(await page.getByRole('dialog',{name:'Name your troubleshooting session'}).isVisible())await nameSession(page)
  await expect(page.getByText('Entered equipment differs from visible nameplate text.')).toBeVisible()
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
  await expect(page.getByRole('button',{name:'Run troubleshooting'})).toBeDisabled()
+})
+
+
+test('My Sessions reopens, renames and refreshes without provider calls',async({page})=>{
+ const mock=await mockApi(page);await page.goto('/');await confirm(page)
+ await page.getByLabel('What problem are you seeing?').fill('Fault 5091');await page.getByRole('button',{name:'Run troubleshooting'}).click()
+ await expect(page.locator('.cause-title')).toBeVisible()
+ const initial=mock.calls.filter(c=>c.method!=='GET').length
+ await page.getByRole('button',{name:'My Sessions',exact:true}).click()
+ await expect(page.locator('.session-card')).toContainText('ACS880 Fault 5091')
+ await page.getByRole('button',{name:'Rename',exact:true}).click()
+ await page.getByRole('dialog',{name:'Rename session'}).getByLabel('Session name').fill('Drive cabinet follow-up')
+ await page.getByRole('button',{name:'Save name'}).click()
+ await expect(page.locator('.session-card')).toContainText('Drive cabinet follow-up')
+ await page.getByRole('button',{name:'Continue troubleshooting'}).click()
+ await expect(page.locator('.cause-title')).toBeVisible();await expect(page.locator('.session-status')).toContainText('Drive cabinet follow-up')
+ await page.reload();await expect(page.locator('.cause-title')).toBeVisible()
+ expect(mock.calls.filter(c=>c.method!=='GET').length).toBe(initial+1) // rename only
+ await page.getByRole('button',{name:'Log out'}).click();await expect(page.getByRole('heading',{name:'Log in to FieldTrace'})).toBeVisible()
+ await expect(page.locator('.cause-title')).toHaveCount(0)
+})
+
+test('inaccessible saved session is cleared without exposing another account',async({page})=>{
+ await mockApi(page)
+ await page.addInitScript(()=>sessionStorage.setItem('fieldtrace.session.10000000-0000-0000-0000-000000000099','foreign-case'))
+ await page.route('**/api/sessions/foreign-case**',r=>r.fulfill({status:404,json:{detail:'Session not found'}}))
+ await page.goto('/');await expect(page.getByRole('alert')).toContainText('unavailable for this account')
+ await expect(page.locator('.session-status')).toContainText('No active session')
+ await expect(page.locator('.cause-title')).toHaveCount(0)
+})
+
+test('cancel naming sends no session creation and preserves drafts',async({page})=>{
+ const mock=await mockApi(page);await page.goto('/');await page.getByLabel('Model text, if known').fill('ACS880')
+ await page.getByRole('button',{name:'Detect equipment / read nameplate'}).click()
+ await page.getByRole('dialog').getByRole('button',{name:'Cancel'}).click()
+ await expect(page.getByLabel('Model text, if known')).toHaveValue('ACS880');expect(mock.calls).toHaveLength(0)
 })

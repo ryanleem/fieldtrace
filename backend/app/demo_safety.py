@@ -115,7 +115,7 @@ def configure_safety(app, settings):
             return JSONResponse({'detail': 'Invalid request. Check input types and limits.'}, status_code=422)
 
         async def http_error(request, exc):
-            messages = {404: 'Resource not found.', 409: 'Session changed. Refresh and retry.',
+            messages = {401: 'Sign in to continue.', 404: 'Resource not found.', 409: 'Session changed. Refresh and retry.',
                         422: 'Invalid request. Check input types and limits.', 403: 'Operation unavailable.'}
             return JSONResponse({'detail': messages.get(exc.status_code, 'Request could not be completed.')},
                                 status_code=exc.status_code)

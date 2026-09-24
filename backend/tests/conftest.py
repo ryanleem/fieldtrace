@@ -8,6 +8,21 @@ from app.config import Settings, get_settings
 from app.db.init_db import initialize
 
 
+def authenticated_client(app, monkeypatch, engine, session_id=None):
+    """Existing route regressions now use a verified test identity and real SQL ownership."""
+    from app import auth
+    from app.models.equipment import EquipmentSession
+    from sqlalchemy.orm import Session
+    user = uuid4()
+    monkeypatch.setattr(auth, 'get_engine', lambda: engine)
+    app.dependency_overrides[auth.require_user] = lambda: user
+    if session_id:
+        with Session(engine) as db, db.begin():
+            row = db.get(EquipmentSession, session_id)
+            row.owner_user_id, row.session_name = user, 'Regression session'
+    return user
+
+
 class TestEmbedder:
     """Deterministic fixture vectors only; never used for real-corpus evaluation."""
     dimensions = 384
