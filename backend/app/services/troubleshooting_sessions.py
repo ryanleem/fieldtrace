@@ -11,6 +11,7 @@ from app.models.troubleshooting import TroubleshootingSession, TroubleshootingRu
 from app.services.equipment_sessions import load_session, StaleIdentification, SessionNotFound
 from app.services.troubleshooting_pipeline import Pipeline, insufficient
 from app.services.troubleshooting_query import retrieve
+from app.services.manual_coverage import indexed_manual_coverage
 
 FIELDS = ('reported_symptoms', 'technician_notes', 'measurements', 'checks_completed',
           'ruled_out_causes', 'confirmed_observations', 'follow_up_answers')
@@ -28,17 +29,19 @@ def state_row(db, owner):
 
 def snapshot(db, owner, row):
     equipment = db.get(Equipment, owner.confirmed_equipment_id) if owner.confirmed_equipment_id else None
+    filters = dict(equipment_model=equipment.retrieval_model or None,
+                   equipment_family=equipment.retrieval_family) if equipment else {}
+    coverage = indexed_manual_coverage(db, filters) if equipment else None
     findings = db.scalars(select(AggregatedVisualFinding).where(
         AggregatedVisualFinding.session_id == owner.id,
         AggregatedVisualFinding.equipment_id == owner.confirmed_equipment_id).order_by(AggregatedVisualFinding.id)).all()
     notes = db.scalars(select(SessionImage).where(SessionImage.session_id == owner.id,
         SessionImage.equipment_id == owner.confirmed_equipment_id).order_by(SessionImage.id)).all()
-    return dict(session_id=str(owner.id), equipment_revision=owner.identification_revision,
+    return dict(manual_coverage=coverage, session_id=str(owner.id), equipment_revision=owner.identification_revision,
         revision=row.revision, inputs={k: row.inputs.get(k, []) for k in FIELDS},
         equipment=dict(manufacturer=equipment.manufacturer, model=equipment.model_name,
                        family=equipment.equipment_family) if equipment else None,
-        retrieval_filters=dict(equipment_model=equipment.retrieval_model or None,
-                               equipment_family=equipment.retrieval_family) if equipment else {},
+        retrieval_filters=filters,
         ocr_text=(owner.raw_ocr_text or '')[:8000],
         visual_findings=[dict(aggregated_finding_id=str(f.id), issue_type=f.issue_type,
             location=f.location, description=f.description, visual_confidence=f.visual_confidence,
@@ -111,7 +114,10 @@ def run(engine, session_id, provider, embedder, settings, retriever=None):
         row.run_token, row.run_started_at = token, datetime.now()
     pipeline = Pipeline(provider, embedder, settings, retriever or (lambda plan: retrieve(engine, plan, embedder, settings)))
     try:
-        result = pipeline.execute(context)
+        # Explicitly injected retrievers can use evidence outside this database.
+        # The persisted fingerprint still uses the unchanged database snapshot.
+        execution_context = dict(context, manual_coverage=None) if retriever is not None else context
+        result = pipeline.execute(execution_context)
     except Exception:
         # Failed calls cannot turn previous findings into a new successful answer.
         result = insufficient(context, 'failed')

@@ -400,6 +400,14 @@ def test_provider_failure_persisted_without_fake_answer(troubleshooting_db):
 @pytest.mark.integration
 def test_api_update_symptom_followup_and_revision_conflict(troubleshooting_db, monkeypatch):
     engine, settings, sid, embedder = troubleshooting_db
+    # The public route uses the database corpus, unlike explicitly injected
+    # service retrievers. Seed genuine indexed coverage before mocking search.
+    from test_retrieval import make_pdf
+    from app.schemas.document import IngestRequest
+    from app.services.ingestion import ingest
+    make_pdf(settings.manuals_dir, 'api-fixture.pdf', 'Synthetic manual: restricted airflow may cause overheating.')
+    ingest(engine, IngestRequest(filename='api-fixture.pdf', title='API fixture',
+        equipment_model='ACS880', equipment_family='ACS880 Drives'), embedder, settings)
     app = FastAPI(); app.include_router(api.router)
     from conftest import authenticated_client
     authenticated_client(app, monkeypatch, engine, sid)

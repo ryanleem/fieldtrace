@@ -98,6 +98,14 @@ class Pipeline:
         return None, False
 
     def execute(self, context):
+        if context.get('manual_coverage') is False:
+            result = insufficient(context)
+            result['message'] = ('Equipment confirmed, but no indexed manual matches this equipment. '
+                                 'Troubleshooting is unavailable until an applicable manual is added.')
+            result['next_question'] = 'Can you provide an applicable manual or confirm that the selected equipment is correct?'
+            result['missing_information'] = ['An indexed manual matching the confirmed equipment.']
+            self.audit['coverage'] = 'No indexed manual matches the confirmed equipment filters'
+            return result
         refinement = None
         for attempt in range(2):
             plan = construct_query(context, self.embedder, refinement)

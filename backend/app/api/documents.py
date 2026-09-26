@@ -4,6 +4,7 @@ from app.db.session import get_engine
 from app.schemas.document import IngestRequest, IngestResult
 from app.services.embeddings import get_embedder
 from app.services.ingestion import ingest
+from app.services.pdf_parser import DocumentOCRError
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -12,6 +13,8 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 def ingest_document(request: IngestRequest):
     try:
         return ingest(get_engine(), request, get_embedder())
+    except DocumentOCRError as error:
+        raise HTTPException(503, detail={"errors": [str(error)]}) from None
     except FileNotFoundError:
         raise HTTPException(404, detail={"errors": ["Local PDF not found in data/manuals"]})
     except ValueError as error:

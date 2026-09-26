@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     semantic_top_n: int = Field(20, ge=1, le=500)
     keyword_top_n: int = Field(20, ge=1, le=500)
     hybrid_top_k: int = Field(10, ge=1, le=100)
+    document_ocr_enabled: bool = False
     manuals_dir: Path = ROOT / "data/manuals"
     processed_dir: Path = ROOT / "data/processed"
     model_cache: Path = ROOT / ".cache/models"

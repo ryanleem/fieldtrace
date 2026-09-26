@@ -45,6 +45,9 @@ Set backend `SUPABASE_URL` and frontend `VITE_SUPABASE_URL` /
 See [authentication setup and migration](docs/DEPLOYMENT.md#authentication-and-saved-sessions-pending-review-not-deployed).
 These changes have not been deployed; the current hosted demo is unchanged.
 
+For optional scanned-manual OCR and the indexed-manual preflight, see
+[OCR and manual coverage](docs/SCANNED-MANUAL-OCR-AND-COVERAGE.md).
+
 ## Start here if you are a teammate
 
 You do **not** need Ryan's local files. Everything needed to collaborate is in this private repository, except:
