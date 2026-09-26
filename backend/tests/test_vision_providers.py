@@ -137,7 +137,7 @@ def test_gemini_persists_source_and_aggregates_without_changing_confirmation(ins
     engine, settings, sid, _ = inspection_db
     before = equipment.get_state(engine, sid)
     first = upload(engine, settings, sid, view_label='front')
-    second = upload(engine, settings, sid, view_label='close_up', user_note='Noise here')
+    second = upload(engine, settings, sid, view_label='close_up', user_note='Noise here', extra_bytes=b'closeup')
     adapter = provider(lambda r: httpx.Response(200, json=response({'image_summary': 'Visible deposits.', 'findings': [finding()]})))
     result = images.analyze_all(engine, sid, adapter, settings)
     assert equipment.get_state(engine, sid) == before

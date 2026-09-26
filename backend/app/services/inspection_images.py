@@ -1,4 +1,5 @@
 import io
+import hashlib
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -50,6 +51,11 @@ def image_dict(row, raw=False):
     data = row_dict(row)
     for field in ('analysis_token', 'analysis_started_at', 'stored_path'):
         data.pop(field)
+    if not data.get('content_sha256'):
+        try:
+            data['content_sha256'] = hashlib.sha256(image_path(get_settings(), row).read_bytes()).hexdigest()
+        except (OSError, ValueError):
+            pass
     if not raw:
         data.pop('raw_vision_results')
     return data
@@ -80,12 +86,28 @@ def upload_images(engine, session_id, uploads, settings=None):
         with Session(engine) as session, session.begin():
             owner = load_session(session, session_id, lock=True)
             count = session.scalar(select(func.count()).select_from(SessionImage).where(SessionImage.session_id == session_id))
-            if count + len(uploads) > settings.max_inspection_images:
-                raise ValueError('Session image limit exceeded')
+            existing = list(session.scalars(select(SessionImage).where(SessionImage.session_id == session_id).order_by(SessionImage.created_at, SessionImage.id)))
+            by_hash = {row.content_sha256: row for row in existing if row.content_sha256}
+            for row in existing:
+                if row.content_sha256 is None:
+                    try:
+                        digest = hashlib.sha256(image_path(settings, row).read_bytes()).hexdigest()
+                    except (OSError, ValueError):
+                        continue
+                    if digest not in by_hash:
+                        row.content_sha256 = digest
+                        by_hash[digest] = row
             created = []
             for upload, metadata, mime, extension, filename in validated:
+                digest = hashlib.sha256(upload['data']).hexdigest()
+                if digest in by_hash:
+                    created.append(by_hash[digest])
+                    continue
+                if count >= settings.max_inspection_images:
+                    raise ValueError('Session image limit exceeded')
+                count += 1
                 image_id = uuid4()
-                record = SessionImage(id=image_id, session_id=session_id, equipment_id=owner.confirmed_equipment_id,
+                record = SessionImage(id=image_id, content_sha256=digest, use_for_identification=upload.get('use_for_identification') if upload.get('use_for_identification') is not None else metadata.view_label=='nameplate', session_id=session_id, equipment_id=owner.confirmed_equipment_id,
                     view_label=metadata.view_label, user_note=metadata.user_note, original_filename=filename,
                     stored_path=f'{session_id}/{image_id}{extension}', mime_type=mime)
                 path = image_path(settings, record)
@@ -95,6 +117,7 @@ def upload_images(engine, session_id, uploads, settings=None):
                     handle.write(upload['data'])
                 session.add(record)
                 created.append(record)
+                by_hash[digest] = record
             session.flush()
             result = [image_dict(row) for row in created]
         return result
@@ -237,3 +260,36 @@ def analyze_all(engine, session_id, provider, settings=None):
             except StaleIdentification as error:
                 results.append({'image_id': image['id'], 'error': str(error)})
     return {'results': results, 'aggregated_visual_findings': visual_state(engine, session_id)['aggregated_visual_findings']}
+
+
+def remove_image(engine, session_id, image_id, user_id, settings):
+    from app.services.user_sessions import owned_query
+    from fastapi import HTTPException
+    from app.models.troubleshooting import TroubleshootingSession
+    with Session(engine) as db, db.begin():
+        owner = db.scalar(owned_query(session_id, user_id).with_for_update())
+        if owner is None:
+            raise HTTPException(404, 'Session not found')
+        record = load_image(db, session_id, image_id)
+        stored_path = record.stored_path
+        db.execute(delete(SessionImage).where(SessionImage.id == image_id, SessionImage.session_id == session_id))
+        db.flush()
+        rebuild_aggregates(db, session_id)
+        trace = db.get(TroubleshootingSession, session_id)
+        if trace:
+            trace.current = {}
+            trace.run_token = None
+            trace.revision += 1
+    pending = False
+    try:
+        root = settings.uploads_dir.resolve()
+        relative = Path(stored_path)
+        if relative.parent != Path(str(session_id)) or relative.name not in {f'{image_id}.jpg', f'{image_id}.png', f'{image_id}.webp'}:
+            raise ValueError('Invalid stored image path')
+        path = root / relative
+        if path.resolve() != path or path.parent.resolve() != path.parent:
+            raise ValueError('Redirected upload path')
+        path.unlink(missing_ok=True)
+    except (OSError, ValueError, RuntimeError):
+        pending = True
+    return {'deleted': True, 'file_cleanup_pending': pending}

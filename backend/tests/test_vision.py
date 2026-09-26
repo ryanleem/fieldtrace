@@ -64,7 +64,7 @@ def inspection_db(isolated_db, tmp_path):
 
 
 def upload(engine, settings, sid, **kwargs):
-    return service.upload_images(engine, sid, [dict(data=photo(), original_filename='../../name.png', **kwargs)], settings)[0]
+    return service.upload_images(engine, sid, [dict(data=photo()+kwargs.pop('extra_bytes', b''), original_filename='../../name.png', **kwargs)], settings)[0]
 
 
 def test_normalization_and_no_invented_box():
@@ -140,7 +140,7 @@ def test_upload_metadata_limits_and_atomicity(inspection_db):
     assert len(service.list_images(engine, sid)) == 1
     settings.max_inspection_images = 1
     with pytest.raises(ValueError):
-        upload(engine, settings, sid)
+        upload(engine, settings, sid, extra_bytes=b'different')
     assert len(list(settings.uploads_dir.rglob('*.png'))) == 1
 
 
@@ -149,7 +149,7 @@ def test_analysis_raw_notes_confirmation_and_multi_view(inspection_db):
     engine, settings, sid, _ = inspection_db
     before = equipment.get_state(engine, sid)
     one = upload(engine, settings, sid, view_label='front', user_note='I hear noise here')
-    two = upload(engine, settings, sid, view_label='close_up')
+    two = upload(engine, settings, sid, view_label='close_up', extra_bytes=b'other angle')
     provider = MockVision()
     result = service.analyze_all(engine, sid, provider, settings)
     assert len(result['aggregated_visual_findings']) == 1
@@ -214,7 +214,7 @@ def test_api_upload_analyze_get_and_bad_metadata(inspection_db, monkeypatch):
     authenticated_client(app, monkeypatch, engine, sid)
     app.dependency_overrides[get_vision_provider] = lambda: MockVision()
     with TestClient(app) as client:
-        files = [('images', ('front.png', photo(), 'image/png')), ('images', ('detail.png', photo(), 'image/png'))]
+        files = [('images', ('front.png', photo(), 'image/png')), ('images', ('detail.png', photo()+b'detail', 'image/png'))]
         response = client.post(f'/sessions/{sid}/images', files=files,
                                data={'view_labels': '["front","close_up"]', 'user_notes': '[null,"Noise here"]'})
         assert response.status_code == 201, response.text
@@ -269,7 +269,7 @@ def test_unconfirmed_images_and_later_confirmation(inspection_db):
     equipment.confirm(engine, sid, ConfirmEquipment(equipment_id='abb-acs880-01'))
     assert build_visual_retrieval_context(sid, engine)['visual_findings'] == []
     # Pending unconfirmed uploads can acquire the current confirmation at analysis.
-    second = upload(engine, settings, sid)
+    second = upload(engine, settings, sid, extra_bytes=b'confirmed view')
     service.analyze_image(engine, sid, second['id'], provider, settings)
     assert len(build_visual_retrieval_context(sid, engine)['visual_findings']) == 1
 

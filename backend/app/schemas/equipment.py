@@ -28,5 +28,6 @@ class EquipmentState(BaseModel):
     confirmed_equipment_family: str | None
     confirmed_model: str | None
     retrieval_filters: dict | None
-    visual_support: str = 'Appearance is not used for authoritative identification; only visible OCR text is considered.'
+    identification: dict = Field(default_factory=dict)
+    visual_support: str = 'Appearance provides provisional family evidence, never an exact type code.'
     catalog_label: str = 'Prototype equipment catalog for demo/testing.'

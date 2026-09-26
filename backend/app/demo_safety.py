@@ -25,7 +25,7 @@ class DemoSafetyMiddleware:
 
         path = scope['path'].rstrip('/')
         write = scope['method'] not in {'GET', 'HEAD', 'OPTIONS'}
-        provider = write and (path.endswith('/analyze') or path.endswith('/troubleshooting/run')
+        provider = write and (path.endswith('/equipment/identify') or path.endswith('/analyze') or path.endswith('/troubleshooting/run')
                               or path.endswith('/troubleshooting/follow-up'))
         # Batch analysis could multiply one admitted action into dozens of calls.
         if path.endswith('/images/analyze-all') or path.startswith('/documents'):

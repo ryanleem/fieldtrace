@@ -16,6 +16,8 @@ class SessionImage(Base):
     equipment_id: Mapped[str | None] = mapped_column(ForeignKey('equipment_catalog.id'))
     view_label: Mapped[str]
     original_filename: Mapped[str]
+    content_sha256: Mapped[str | None] = mapped_column(nullable=True)
+    use_for_identification: Mapped[bool | None] = mapped_column(nullable=True)
     stored_path: Mapped[str]
     mime_type: Mapped[str]
     user_note: Mapped[str | None] = mapped_column(Text)

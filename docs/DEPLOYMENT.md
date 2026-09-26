@@ -358,3 +358,114 @@ production release. The global single-instance rate limiter remains shared by al
 
 For exact Supabase URLs, email settings and the real two-user validation procedure,
 see [Supabase readiness review](SUPABASE-READINESS.md).
+
+### Deleting private sessions
+
+`DELETE /sessions/{session_id}` authenticates and locks an owner-scoped SQL row.
+The transaction deletes the parent and uses existing foreign-key cascades for images,
+findings, troubleshooting state and runs. Measurements, checks, follow-ups, retrieved
+history and citations are JSON in those rows; shared manuals/chunks/catalog stay intact.
+No schema migration or provider call is required for deletion.
+
+Only after commit, recorded UUID image files directly under `UPLOAD_ROOT/{session_id}`
+are unlinked. Missing files are harmless. Traversal, redirected paths and unexpected
+filenames are skipped. No recursive directory deletion is used. Database failure leaves
+files untouched. If file cleanup fails, the API still reports successful database
+deletion with `file_cleanup_pending=true`; the UI warns and server logs identify the
+session UUID for administrator cleanup. Such leftover files are inaccessible through
+session APIs but remain on disk until an administrator removes them. No automatic retry
+queue is implemented. Empty session directories may remain. Upload storage must be
+server-controlled; concurrent hostile filesystem mutation is outside this prototype's
+threat model. Existing upload transactions lock the same parent row before writing.
+
+### Saving workspace drafts
+
+The active named session exposes GET/PUT `/sessions/{session_id}/draft`, guarded by
+verified ownership and a parent-row lock. The bounded, extra-field-forbidding payload
+contains model text, symptom text, follow-up text, entry type and partial measurement
+fields. It is a replaceable `workspace_draft` in the existing troubleshooting inputs
+JSON, so this feature needs no schema migration. GET falls back to existing entered
+model text and the latest submitted symptom for sessions without a saved draft.
+
+Typing debounces silently for 850 ms; Save flushes immediately. Writes are serialized and bound
+to the captured session ID; leaving/switching cases waits for pending draft saves.
+Logout/unmount cancels pending timers, and completed requests cannot update another
+account's UI. Use manual Save and wait for Saved successfully before logging out or closing the
+page; unsent edits are not durable. Simultaneous edits in separate browser tabs use last-write-wins semantics.
+Failed saves retain on-screen text and offer manual retry. No new session is created.
+
+Draft saves do not append partial symptoms/checks, alter equipment confirmation,
+increment the reasoning input revision, or invalidate results. Retrieval fingerprints
+exclude workspace drafts. Run/Submit update still submits the completed input through
+existing endpoints; merely saving a draft never invokes providers or retrieval.
+Already-submitted notes/checks/measurements and history remain untouched. Rename saves
+the name separately; uploaded photos are already durable and are not re-uploaded by
+auto-save. Manual Save also uploads queued photos and notes, one file per request,
+without OCR, analysis or troubleshooting. Acknowledged uploads leave the queue and
+are not retried; failed files remain queued. Session switching is blocked during
+manual Save, and logout stops subsequent queued uploads. Successful manual feedback
+clears after 2.5 seconds; failed saves retain drafts and show a retry message.
+
+### Photo persistence and removal
+
+The browser hashes original file bytes with SHA-256 to skip duplicates in the active
+session queue or saved list. The backend independently computes the hash, locks the
+session and enforces a unique `(session_id, content_sha256)` index. Retrying after a
+lost response reuses the existing image ID and file, without overwriting its note or
+analysis. Identical filenames with different bytes remain separate photos. Hashes
+are exposed only through owner-authorized session endpoints, never a global lookup.
+
+The additive, repeatable migration is `PYTHONPATH=backend python -m
+app.db.migrate_image_fingerprints` (PowerShell: set `$env:PYTHONPATH='backend'`, then
+run `python -m app.db.migrate_image_fingerprints`). Existing vision initialization
+also invokes it. Run this against the intended database before serving the updated
+application; no production migration has been performed as part of local work.
+The nullable column preserves all legacy images, including existing duplicates.
+Legacy hashes are read from contained original files and assigned lazily on upload;
+existing duplicate copies remain available for explicit user removal.
+
+Saved photos show **Saved · Not analyzed**, with explicit Inspect / Analyze and
+Remove actions. Saving does not run providers. Owner-only DELETE
+`/sessions/{session_id}/images/{image_id}` removes the image record and its findings,
+rebuilds aggregates from remaining photos, and invalidates the current troubleshooting
+result. Historical run snapshots remain historical. Shared manuals are untouched.
+After the database transaction commits, cleanup unlinks only the recorded UUID file
+inside the session directory; redirected/outside paths are refused. Missing files
+are harmless. Partial cleanup returns `file_cleanup_pending` and a UI warning;
+an administrator must review residual files (there is no background cleanup retry).
+
+### Limited-evidence equipment identification
+
+Model text is optional. Identification uses selected queued/saved photos, cached local
+OCR, and (when there is no strong exact nameplate) one multi-photo identity extraction
+request through the configured `VISION_PROVIDER` adapter. Existing OpenAI/Gemini model
+and key settings apply. The frontend explicitly sends `use_visual=true`; API clients
+can omit this flag for OCR-only identification. Identification now counts against the
+production provider-call budget. Saving, reopening, and changing photo selection do
+not call a provider. No credentials are added to browser configuration.
+
+The visual request returns observed text/features and provisional identity candidates,
+separately from visible-abnormality analysis. Deterministic catalog matching chooses
+exact observed type, supported model, family, manufacturer, or insufficient evidence.
+Strong readable nameplate text takes precedence over partial text, typed identity and
+appearance. Symptoms are never identity inputs. Appearance alone cannot confirm a
+subtype or invent a full type code; family-only cards ask for readable model evidence
+before model-filtered troubleshooting. HIGH/MEDIUM/LOW are ordinal evidence labels.
+A strong nameplate remains HIGH even when weaker typed text conflicts; the conflict
+is still shown for explicit technician review. A full observed SKU is not catalog-validated.
+
+Up to 30 selected photos are fused in one request. Byte-identical inputs are counted
+once. OCR is reused by content hash and role; validated visual observations are reused
+for the same ordered image hashes. Failure leaves readable OCR available with a visible
+unavailability notice, never fabricated identity evidence. Visual recognition remains
+fallible; mocked tests establish contracts, not real-photo identification accuracy.
+
+Before running updated code against an existing database, apply the repeatable additive
+migration: `PYTHONPATH=backend python -m app.db.migrate_identification_evidence`.
+PowerShell: `$env:PYTHONPATH='backend'; python -m app.db.migrate_identification_evidence`.
+Startup initializers also apply it. It adds `equipment_sessions.identification_evidence`
+(JSONB) and nullable `session_images.use_for_identification`. No rows are removed.
+Legacy nameplates default to selected; other legacy views can be selected explicitly.
+New queued photos default to selected, and saving persists that choice. Owner-only
+PATCH `/sessions/{session_id}/images/{image_id}/identification` changes selection without
+uploading or analyzing the photo. Existing catalog entries and shared corpus are unchanged.

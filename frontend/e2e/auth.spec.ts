@@ -12,8 +12,12 @@ test('sign in, named creation and logout use mocked Supabase',async({page})=>{
  await page.getByRole('button',{name:'Log in',exact:true}).click()
  await page.getByRole('button',{name:'Start new troubleshooting session'}).click()
  await page.getByLabel('Session name').fill('Named investigation');await page.getByRole('button',{name:'Start session',exact:true}).click()
- await expect(page.locator('.session-status')).toContainText('Named investigation')
+ await expect(page.getByRole('heading',{name:'Named investigation',exact:true})).toBeVisible()
  await page.getByRole('button',{name:'Log out'}).click();await expect(page.getByLabel('Email')).toBeVisible()
+ await expect(page.getByLabel('Model text, if known')).toHaveCount(0)
+ await page.getByLabel('Password').fill('test-password');await page.getByRole('button',{name:'Log in',exact:true}).click()
+ await expect(page.getByRole('heading',{name:'No active troubleshooting session'})).toBeVisible()
+ await expect(page.getByLabel('Model text, if known')).toBeDisabled()
 })
 
 test('signup confirmation and login failure are clear',async({page})=>{

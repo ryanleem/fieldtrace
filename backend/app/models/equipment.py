@@ -36,6 +36,7 @@ class EquipmentSession(Base):
     raw_ocr_text: Mapped[str] = mapped_column(Text, default="")
     parsed_ocr_fields: Mapped[dict] = mapped_column(JSONB, default=dict)
     ocr_results: Mapped[list] = mapped_column(JSONB, default=list)
+    identification_evidence: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     input_identifiers: Mapped[list] = mapped_column(JSONB, default=list)
     ranked_candidates: Mapped[list] = mapped_column(JSONB, default=list)
     mismatch_warnings: Mapped[list] = mapped_column(JSONB, default=list)

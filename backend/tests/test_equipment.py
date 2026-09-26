@@ -149,7 +149,7 @@ def test_session_persistence_confirmation_rejection_and_invalidation(equipment_d
     assert confirmed_search_request(persisted, 'fault tracing').equipment_family == 'ACS880 Drives'
     with pytest.raises(StaleIdentification):
         confirm(engine, initial.session_id, ConfirmEquipment(equipment_id='abb-acs880-01', identification_revision=suggested.identification_revision))
-    no_match = identify(engine, initial.session_id, None, [{'data': image_bytes()}], MockOCR(''))
+    no_match = identify(engine, initial.session_id, None, [{'data': image_bytes()+b'unreadable'}], MockOCR(''))
     assert no_match.confirmation_status == 'UNCONFIRMED' and no_match.confirmed_equipment_id is None
     with pytest.raises(ValueError):
         confirm(engine, initial.session_id, ConfirmEquipment(equipment_id='not-in-catalog'))
@@ -198,7 +198,7 @@ def test_multiple_images_keep_sources_and_ambiguous_fields_null(equipment_db):
 
     state = create_session(equipment_db)
     state = identify(equipment_db, state.session_id, None,
-                     [{'data': image_bytes(), 'role': 'nameplate'}, {'data': image_bytes(), 'role': 'equipment'}],
+                     [{'data': image_bytes(), 'role': 'nameplate'}, {'data': image_bytes()+b'other view', 'role': 'equipment'}],
                      SequentialOCR())
     assert len(state.ocr_results) == 2
     assert state.ocr_results[0]['raw_text'] == 'ABB\nACS880-01\n400 V'
@@ -231,3 +231,12 @@ def test_confirmed_equipment_filters_existing_real_retrieval():
     finally:
         with Session(engine) as session, session.begin():
             session.delete(session.get(EquipmentSession, state.session_id))
+
+
+@pytest.mark.parametrize('weak_text', ['not sure', 'unknown', "won't run", '', 'something is wrong'])
+def test_vague_text_never_degrades_valid_nameplate(weak_text):
+    strong = rank_equipment('', [ocr_observation()], CATALOG)
+    actual = rank_equipment(weak_text, [ocr_observation()], CATALOG)
+    assert actual == strong
+    assert actual['ranked_candidates'][0]['candidate_id'] == 'abb-acs880-01'
+    assert actual['ranked_candidates'][0]['match_level'] == 'HIGH'

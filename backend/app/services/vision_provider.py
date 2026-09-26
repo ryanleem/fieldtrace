@@ -54,24 +54,24 @@ class OpenAIVisionProvider:
         self.settings = settings or get_settings()
         self.transport = transport
 
-    def analyze_equipment_image(self, image, context, *, strict=False):
+    def analyze_equipment_image(self, image, context, *, strict=False, _schema=None, _prompt=None, _images=None):
         if not self.settings.openai_api_key:
             raise VisionUnavailable('Set OPENAI_API_KEY to run vision analysis')
-        schema = VisionResult.model_json_schema()
+        schema = _schema or VisionResult.model_json_schema()
         # OpenAI strict schemas require every property, including nullable fields.
         for definition in [schema, *schema.get('$defs', {}).values()]:
             if 'properties' in definition:
                 definition['required'] = list(definition['properties'])
-        schema['$defs']['VisibleFinding']['properties']['bounding_region'] = {'type': 'null'}
-        data_url = 'data:' + image.mime_type + ';base64,' + base64.b64encode(image.data).decode('ascii')
+        if _schema is None:
+            schema['$defs']['VisibleFinding']['properties']['bounding_region'] = {'type': 'null'}
         body = {
             'model': self.settings.vision_model, 'store': False,
-            'instructions': VISION_PROMPT + ('\nStrict retry: output only valid schema-compliant visible observations.' if strict else ''),
+            'instructions': (_prompt or VISION_PROMPT) + ('\nStrict retry: output only valid schema-compliant visible observations.' if strict else ''),
             'input': [{'role': 'user', 'content': [
                 {'type': 'input_text', 'text': json.dumps({'orientation_only': context})},
-                {'type': 'input_image', 'image_url': data_url, 'detail': 'high'}]}],
+                *[{'type': 'input_image', 'image_url': 'data:'+item.mime_type+';base64,'+base64.b64encode(item.data).decode('ascii'), 'detail': 'high'} for item in (_images or [image])]]}],
             'text': {'format': {'type': 'json_schema', 'name': 'visible_evidence', 'strict': True, 'schema': schema}},
-            'max_output_tokens': 2500,
+            'max_output_tokens': 8000 if _schema else 2500,
         }
         try:
             with httpx.Client(timeout=self.settings.vision_timeout_seconds, transport=self.transport) as client:
@@ -102,12 +102,14 @@ class GeminiVisionProvider:
         self.settings = settings or get_settings()
         self.transport = transport
 
-    def analyze_equipment_image(self, image, context, *, strict=False):
+    def analyze_equipment_image(self, image, context, *, strict=False, _schema=None, _prompt=None, _images=None):
         if not self.settings.gemini_api_key:
             raise VisionUnavailable('Set GEMINI_API_KEY to run vision analysis')
-        schema = VisionResult.model_json_schema()
-        schema['$defs']['VisibleFinding']['properties']['bounding_region'] = {'type': 'null'}
-        schema['$defs'].pop('BoundingRegion', None)
+        schema = _schema or VisionResult.model_json_schema()
+        if _schema is None:
+            schema['$defs']['VisibleFinding']['properties']['bounding_region'] = {'type': 'null'}
+        if _schema is None:
+            schema['$defs'].pop('BoundingRegion', None)
         # The REST JSON Schema subset omits string-length/default keywords.
         # The unchanged local Pydantic contract enforces these after generation.
         def supported(value):
@@ -118,12 +120,11 @@ class GeminiVisionProvider:
                 return [supported(v) for v in value]
             return value
         body = {
-            'systemInstruction': {'parts': [{'text': VISION_PROMPT + (
+            'systemInstruction': {'parts': [{'text': (_prompt or VISION_PROMPT) + (
                 '\nStrict retry: output only valid schema-compliant visible observations.' if strict else '')}]},
             'contents': [{'role': 'user', 'parts': [
                 {'text': json.dumps({'orientation_only': context})},
-                {'inlineData': {'mimeType': image.mime_type,
-                                'data': base64.b64encode(image.data).decode('ascii')}}]}],
+                *[{'inlineData': {'mimeType': item.mime_type, 'data': base64.b64encode(item.data).decode('ascii')}} for item in (_images or [image])]]}],
             'generationConfig': {'responseMimeType': 'application/json',
                                  'responseJsonSchema': supported(schema),
                                  'candidateCount': 1, 'maxOutputTokens': 8192},

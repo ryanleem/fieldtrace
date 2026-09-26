@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react'
 import type {Session} from '@supabase/supabase-js'
 import {supabase} from './auth'
-import App from './App'
+import App from './WorkspaceBoundary'
 
 export const replayMode=import.meta.env.VITE_DEMO_MODE==='true'||new URLSearchParams(window.location.search).get('demo')==='true'
 

@@ -78,6 +78,7 @@ def owner_api(isolated_db,monkeypatch):
         app.include_router(module.router);monkeypatch.setattr(module,'get_engine',lambda:engine)
     monkeypatch.setattr(auth,'get_engine',lambda:engine)
     monkeypatch.setattr(inspection,'get_settings',lambda:settings)
+    monkeypatch.setattr(equipment,'get_settings',lambda:settings)
     monkeypatch.setattr(viewer,'get_settings',lambda:settings)
     settings.uploads_dir=settings.processed_dir/'uploads'
     return TestClient(app),app,engine,uuid4(),uuid4()
@@ -168,3 +169,322 @@ def test_migration_additive_and_idempotent(owner_api):
         row=db.get(EquipmentSession,legacy)
         assert row and row.owner_user_id is None and row.session_name is None
     assert user_sessions.list_owned(engine,uuid4())==[]
+
+
+@pytest.mark.integration
+def test_delete_owner_cascades_and_preserves_other_data(owner_api):
+    from app.models.vision import SessionImage, VisualFinding, AggregatedVisualFinding
+    from app.models.troubleshooting import TroubleshootingSession, TroubleshootingRun
+    from app.models.equipment import Equipment
+    from sqlalchemy import select, func
+    from pathlib import Path
+    c,app,engine,a,b=owner_api
+    as_user(app,a)
+    sid=c.post('/sessions',json={'session_name':'Delete fixture only'}).json()['session_id']
+    other=c.post('/sessions',json={'session_name':'Keep'}).json()['session_id']
+    image=c.post(f'/sessions/{sid}/images',files={'images':('photo.png',image_bytes(),'image/png')}).json()[0]
+    other_image=c.post(f'/sessions/{other}/images',files={'images':('keep.png',image_bytes(),'image/png')}).json()[0]
+    from uuid import UUID
+    with Session(engine) as db, db.begin():
+        path=equipment.get_settings().uploads_dir/db.get(SessionImage,image['id']).stored_path
+        other_path=equipment.get_settings().uploads_dir/db.get(SessionImage,other_image['id']).stored_path
+        catalog_count=db.scalar(select(func.count()).select_from(Equipment))
+        fid=uuid4()
+        db.add(VisualFinding(id=fid,session_id=UUID(sid),image_id=UUID(image['id']),issue_type='corrosion',location='housing',description='Visible corrosion',severity='low',visual_confidence='high'))
+        db.add(AggregatedVisualFinding(id=uuid4(),session_id=UUID(sid),issue_type='corrosion',location='housing',description='Visible corrosion',severity='low',visual_confidence='high',supporting_image_ids=[image['id']],supporting_finding_ids=[str(fid)]))
+        db.add(TroubleshootingSession(session_id=UUID(sid),equipment_revision=0,inputs={'measurements':[{'value':1}],'checks_completed':['test'],'follow_up_answers':['test']}))
+        db.add(TroubleshootingRun(session_id=UUID(sid),input_revision=0,equipment_revision=0,context_fingerprint='fixture',status='not_run',audit={'retrieved_evidence':[]},final={'sources':[]}))
+    as_user(app,b)
+    assert c.delete(f'/sessions/{sid}').status_code==404
+    assert path.exists()
+    app.dependency_overrides.pop(auth.require_user)
+    assert c.delete(f'/sessions/{sid}').status_code==401
+    as_user(app,a)
+    legacy=create_session(engine).session_id
+    for target in [legacy,uuid4()]:assert c.delete(f'/sessions/{target}').status_code==404
+    response=c.delete(f'/sessions/{sid}')
+    assert response.status_code==200 and response.json()=={'deleted':True,'file_cleanup_pending':False}
+    assert not path.exists() and other_path.exists()
+    with Session(engine) as db:
+        assert db.get(EquipmentSession,sid) is None
+        assert db.get(EquipmentSession,other) is not None
+        assert db.get(EquipmentSession,legacy) is not None
+        for model in [SessionImage,VisualFinding,AggregatedVisualFinding,TroubleshootingSession,TroubleshootingRun]:
+            assert db.scalar(select(func.count()).select_from(model).where(model.session_id==UUID(sid)))==0
+        assert db.scalar(select(func.count()).select_from(Equipment))==catalog_count
+    assert c.delete(f'/sessions/{sid}').status_code==404
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize('mode',['outside','other_session','missing','permission'])
+def test_delete_file_cleanup_is_scoped_and_failure_is_reported(owner_api,tmp_path,monkeypatch,mode):
+    from app.models.vision import SessionImage
+    from pathlib import Path
+    c,app,engine,a,b=owner_api;as_user(app,a)
+    sid=c.post('/sessions',json={'session_name':'Cleanup fixture'}).json()['session_id']
+    image=c.post(f'/sessions/{sid}/images',files={'images':('photo.png',image_bytes(),'image/png')}).json()[0]
+    root=equipment.get_settings().uploads_dir
+    unrelated=tmp_path/'must-keep.png';unrelated.write_bytes(b'keep')
+    with Session(engine) as db,db.begin():
+        record=db.get(SessionImage,image['id']);actual=root/record.stored_path
+        if mode=='outside':record.stored_path=str(unrelated)
+        if mode=='other_session':record.stored_path=f'{uuid4()}/{image["id"]}.png'
+    if mode=='missing':actual.unlink()
+    if mode=='permission':
+        original=Path.unlink
+        def denied(path,*args,**kwargs):
+            if path==actual:raise PermissionError('private filesystem detail')
+            return original(path,*args,**kwargs)
+        monkeypatch.setattr(Path,'unlink',denied)
+    result=c.delete(f'/sessions/{sid}')
+    assert result.status_code==200
+    assert result.json()['file_cleanup_pending']==(mode!='missing')
+    assert 'private filesystem' not in result.text
+    assert unrelated.read_bytes()==b'keep'
+    assert c.get(f'/sessions/{sid}').status_code==404
+
+
+@pytest.mark.integration
+def test_delete_transaction_failure_does_not_remove_files(owner_api,monkeypatch):
+    from app.models.vision import SessionImage
+    from sqlalchemy import event
+    c,app,engine,a,b=owner_api;as_user(app,a)
+    sid=c.post('/sessions',json={'session_name':'Rollback fixture'}).json()['session_id']
+    image=c.post(f'/sessions/{sid}/images',files={'images':('photo.png',image_bytes(),'image/png')}).json()[0]
+    with Session(engine) as db:path=equipment.get_settings().uploads_dir/db.get(SessionImage,image['id']).stored_path
+    def reject_commit(session):raise RuntimeError('Test rollback')
+    event.listen(Session,'before_commit',reject_commit)
+    try:
+        with pytest.raises(RuntimeError,match='Test rollback'):
+            user_sessions.delete_owned(engine,sid,a,equipment.get_settings())
+    finally:event.remove(Session,'before_commit',reject_commit)
+    assert path.exists()
+    assert c.get(f'/sessions/{sid}').status_code==200
+
+
+@pytest.mark.integration
+def test_delete_rejects_redirected_session_directory(owner_api,tmp_path,monkeypatch):
+    from pathlib import Path
+    c,app,engine,a,b=owner_api;as_user(app,a)
+    sid=c.post('/sessions',json={'session_name':'Redirect fixture'}).json()['session_id']
+    image=c.post(f'/sessions/{sid}/images',files={'images':('photo.png',image_bytes(),'image/png')}).json()[0]
+    directory=equipment.get_settings().uploads_dir.resolve()/sid
+    # Portable simulation of a junction/symlink resolution, no Windows symlink privilege needed.
+    original=Path.resolve
+    def redirected(path,*args,**kwargs):
+        if path==directory:return tmp_path
+        return original(path,*args,**kwargs)
+    monkeypatch.setattr(Path,'resolve',redirected)
+    result=c.delete(f'/sessions/{sid}')
+    assert result.status_code==200 and result.json()['file_cleanup_pending']
+    assert (directory/(image['id']+'.png')).exists()
+
+
+@pytest.mark.integration
+def test_draft_saving_owner_scoped_idempotent_and_no_reasoning(owner_api):
+    from app.models.troubleshooting import TroubleshootingSession
+    from app.services.troubleshooting_sessions import snapshot, fingerprint
+    from app.schemas.troubleshooting import TroubleshootingInput
+    from app.services import troubleshooting_sessions
+    c,app,engine,a,b=owner_api;as_user(app,a)
+    sid=c.post('/sessions',json={'session_name':'Draft fixture'}).json()['session_id']
+    payload={'model':'ABB ACS880-01','symptom':'Fault 5091','followup':'Fan running',
+             'entry_type':'measurement','measurement':{'name':'temperature','value':'','unit':'C','location':'housing'}}
+    for method in ['get','put']:
+        as_user(app,b)
+        assert getattr(c,method)(f'/sessions/{sid}/draft',**({'json':payload} if method=='put' else {})).status_code==404
+    app.dependency_overrides.pop(auth.require_user)
+    assert c.put(f'/sessions/{sid}/draft',json=payload).status_code==401
+    as_user(app,a)
+    c.get(f'/sessions/{sid}/troubleshooting')
+    with Session(engine) as db:
+        owner=db.get(EquipmentSession,sid);row=db.get(TroubleshootingSession,sid)
+        revision=row.revision;before=fingerprint(snapshot(db,owner,row))
+    for _ in range(2):assert c.put(f'/sessions/{sid}/draft',json=payload).json()==payload
+    assert c.get(f'/sessions/{sid}/draft').json()==payload
+    with Session(engine) as db:
+        owner=db.get(EquipmentSession,sid);row=db.get(TroubleshootingSession,sid)
+        assert row.revision==revision and fingerprint(snapshot(db,owner,row))==before
+        assert owner.entered_equipment_text is None and owner.confirmed_equipment_id is None
+        assert row.inputs['reported_symptoms']==[] and row.inputs['follow_up_answers']==[]
+        assert db.scalar(text('SELECT count(*) FROM troubleshooting_runs'))==0
+    assert c.put(f'/sessions/{sid}/draft',json={**payload,'owner_user_id':str(b)}).status_code==422
+    assert c.put(f'/sessions/{sid}/draft',json={**payload,'symptom':'x'*1201}).status_code==422
+    assert c.get(f'/sessions/{sid}/draft').json()==payload
+    troubleshooting_sessions.update(engine,sid,TroubleshootingInput(reported_symptoms=['Fault 5091']))
+    assert c.get(f'/sessions/{sid}/draft').json()==payload
+    payload['symptom']=''
+    assert c.put(f'/sessions/{sid}/draft',json=payload).status_code==200
+    assert c.get(f'/sessions/{sid}/draft').json()['symptom']==''
+
+
+@pytest.mark.integration
+def test_image_content_retry_is_scoped_and_preserves_metadata(owner_api):
+    import hashlib
+    c,app,engine,a,b=owner_api;as_user(app,a)
+    sid=c.post('/sessions',json={'session_name':'Image retry fixture'}).json()['session_id']
+    content=image_bytes()
+    def send(session,filename='same.png',data=content,note='Latest queued note'):
+        return c.post(f'/sessions/{session}/images',files={'images':(filename,data,'image/png')},data={'user_notes':__import__('json').dumps([note])})
+    # Treat the first successful response as lost; retry with identical original bytes.
+    first=send(sid).json()[0]
+    retry=send(sid,'renamed.png',note='Must not overwrite saved note').json()[0]
+    assert first['id']==retry['id'] and retry['user_note']=='Latest queued note'
+    assert retry['content_sha256']==hashlib.sha256(content).hexdigest()
+    second=send(sid,data=content+b'different').json()[0]
+    assert second['id']!=first['id']
+    assert len(c.get(f'/sessions/{sid}/images').json())==2
+    as_user(app,b)
+    assert c.get(f'/sessions/{sid}/images').status_code==404
+    assert send(sid).status_code==404
+    other=c.post('/sessions',json={'session_name':'Other owner'}).json()['session_id']
+    own=send(other).json()[0]
+    assert own['id']!=first['id'] and own['content_sha256']==first['content_sha256']
+    assert len(c.get(f'/sessions/{other}/images').json())==1
+
+
+@pytest.mark.integration
+def test_remove_photo_cascades_rebuilds_aggregates_and_enforces_owner(owner_api):
+    from app.services import inspection_images
+    from app.models.vision import SessionImage, VisualFinding, AggregatedVisualFinding
+    from test_vision import MockVision
+    from sqlalchemy import select
+    from uuid import UUID
+    c,app,engine,a,b=owner_api;as_user(app,a)
+    sid=c.post('/sessions',json={'session_name':'Remove image fixture'}).json()['session_id']
+    photos=[c.post(f'/sessions/{sid}/images',files={'images':('same.png',image_bytes()+extra,'image/png')}).json()[0] for extra in [b'',b'other']]
+    for photo in photos:inspection_images.analyze_image(engine,UUID(sid),UUID(photo['id']),MockVision(),equipment.get_settings())
+    with Session(engine) as db:
+        paths=[equipment.get_settings().uploads_dir/db.get(SessionImage,p['id']).stored_path for p in photos]
+    target=f'/sessions/{sid}/images/{photos[0]["id"]}'
+    as_user(app,b);assert c.delete(target).status_code==404
+    app.dependency_overrides.pop(auth.require_user);assert c.delete(target).status_code==401
+    as_user(app,a)
+    assert c.delete(f'/sessions/{sid}/images/{uuid4()}').status_code==404
+    assert c.delete(target).json()=={'deleted':True,'file_cleanup_pending':False}
+    assert not paths[0].exists() and paths[1].exists()
+    state=c.get(f'/sessions/{sid}/visual-findings').json()
+    assert len(state['uploaded_images'])==len(state['normalized_visual_findings'])==1
+    assert state['aggregated_visual_findings'][0]['supporting_image_ids']==[photos[1]['id']]
+    # Same owner, wrong session/image pairing must also fail.
+    other=c.post('/sessions',json={'session_name':'Other case'}).json()['session_id']
+    assert c.delete(f'/sessions/{other}/images/{photos[1]["id"]}').status_code==404
+
+
+@pytest.mark.integration
+def test_legacy_image_hash_migration_preserves_duplicates_and_retry_reuses(owner_api):
+    from app.db.migrate_image_fingerprints import migrate as migrate_hashes
+    from app.models.vision import SessionImage
+    c,app,engine,a,b=owner_api;as_user(app,a)
+    sid=c.post('/sessions',json={'session_name':'Legacy fixture'}).json()['session_id']
+    rows=[c.post(f'/sessions/{sid}/images',files={'images':('legacy.png',image_bytes()+extra,'image/png')}).json()[0] for extra in [b'',b'other']]
+    with Session(engine) as db,db.begin():
+        for item in rows:
+            row=db.get(SessionImage,item['id']);row.content_sha256=None
+            (equipment.get_settings().uploads_dir/row.stored_path).write_bytes(image_bytes())
+    migrate_hashes(engine);migrate_hashes(engine)
+    retry=c.post(f'/sessions/{sid}/images',files={'images':('retry.png',image_bytes(),'image/png')}).json()[0]
+    assert retry['id'] in [r['id'] for r in rows]
+    assert len(c.get(f'/sessions/{sid}/images').json())==2
+
+
+@pytest.mark.integration
+def test_remove_photo_refuses_unrelated_stored_path(owner_api,tmp_path):
+    from app.models.vision import SessionImage
+    c,app,engine,a,b=owner_api;as_user(app,a)
+    sid=c.post('/sessions',json={'session_name':'Unsafe path fixture'}).json()['session_id']
+    row=c.post(f'/sessions/{sid}/images',files={'images':('photo.png',image_bytes(),'image/png')}).json()[0]
+    unrelated=tmp_path/'unrelated.png';unrelated.write_bytes(b'keep')
+    with Session(engine) as db,db.begin():db.get(SessionImage,row['id']).stored_path=str(unrelated)
+    result=c.delete(f'/sessions/{sid}/images/{row["id"]}')
+    assert result.status_code==200 and result.json()['file_cleanup_pending']
+    assert unrelated.read_bytes()==b'keep'
+
+
+@pytest.mark.integration
+def test_concurrent_and_same_batch_image_retries_reuse_one_file(owner_api):
+    from concurrent.futures import ThreadPoolExecutor
+    from uuid import UUID
+    from app.services.inspection_images import upload_images
+    from app.models.vision import SessionImage
+    from sqlalchemy import select
+    c,app,engine,a,b=owner_api;as_user(app,a)
+    sid=UUID(c.post('/sessions',json={'session_name':'Concurrent uploads'}).json()['session_id'])
+    settings=equipment.get_settings()
+    upload={'data':image_bytes(),'original_filename':'same.png'}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results=list(pool.map(lambda _:upload_images(engine,sid,[upload,upload],settings),range(2)))
+    assert len({str(row['id']) for result in results for row in result})==1
+    with Session(engine) as db:
+        rows=list(db.scalars(select(SessionImage).where(SessionImage.session_id==sid)))
+        assert len(rows)==1
+    assert len(list((settings.uploads_dir/str(sid)).iterdir()))==1
+
+
+@pytest.mark.integration
+def test_saved_nameplate_identification_is_owner_scoped_and_ignores_symptoms(owner_api):
+    from app.services.equipment_ocr import get_ocr_provider
+    from test_equipment import MockOCR
+    c,app,engine,a,b=owner_api;as_user(app,a)
+    app.dependency_overrides[get_ocr_provider]=lambda:MockOCR()
+    sid=c.post('/sessions',json={'session_name':'Saved plate'}).json()['session_id']
+    image=c.post(f'/sessions/{sid}/images',files={'images':('plate.png',image_bytes(),'image/png')},data={'view_labels':'["nameplate"]'}).json()[0]
+    import json
+    for symptom in ['not sure','unknown','',"won't run"]:
+        c.put(f'/sessions/{sid}/draft',json={'model':'','symptom':symptom})
+        result=c.post(f'/sessions/{sid}/equipment/identify',data={'entered_equipment_text':symptom,'saved_image_ids':json.dumps([image['id']])})
+        assert result.status_code==200
+        assert result.json()['ranked_candidates'][0]['candidate_id']=='abb-acs880-01'
+        assert not result.json()['mismatch_warnings']
+    conflict=c.post(f'/sessions/{sid}/equipment/identify',data={'entered_equipment_text':'ACS580-01','saved_image_ids':json.dumps([image['id']])}).json()
+    assert conflict['ranked_candidates'][0]['candidate_id']=='abb-acs880-01' and conflict['mismatch_warnings']
+    as_user(app,b)
+    other=c.post('/sessions',json={'session_name':'Other user'}).json()['session_id']
+    assert c.post(f'/sessions/{other}/equipment/identify',data={'saved_image_ids':json.dumps([image['id']])}).status_code==404
+    assert c.post(f'/sessions/{sid}/equipment/identify',data={'saved_image_ids':json.dumps([image['id']])}).status_code==404
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize('payload,field', [({'answer':'STO wiring has not yet been checked.'},'follow_up_answers'), ({'checks_completed':['STO wiring inspected']},'checks_completed'), ({'measurements':[{'name':'temperature','value':'42','unit':'C','location':'housing'}]},'measurements')])
+def test_followup_endpoint_persists_each_update_before_reasoning(owner_api,monkeypatch,payload,field):
+    from app.services import troubleshooting_sessions
+    c,app,engine,a,b=owner_api;as_user(app,a)
+    sid=c.post('/sessions',json={'session_name':'Update persistence'}).json()['session_id']
+    calls=[]
+    def run(engine,session_id,*args):
+        state=troubleshooting_sessions.get_state(engine,session_id)
+        calls.append(state)
+        return state
+    monkeypatch.setattr(troubleshooting_sessions,'run',run)
+    app.dependency_overrides[troubleshooting.get_troubleshooting_provider]=lambda:object()
+    app.dependency_overrides[troubleshooting.get_embedder]=lambda:object()
+    result=c.post(f'/sessions/{sid}/troubleshooting/follow-up',json=payload)
+    assert result.status_code==200 and len(calls)==1
+    assert result.json()[field] and calls[0][field]==result.json()[field]
+    assert c.get(f'/sessions/{sid}/troubleshooting').json()[field]==result.json()[field]
+    as_user(app,b)
+    assert c.post(f'/sessions/{sid}/troubleshooting/follow-up',json=payload).status_code==404
+    assert len(calls)==1
+
+
+@pytest.mark.integration
+def test_identification_photo_selection_persists_and_is_owner_scoped(owner_api):
+    from app.services.equipment_ocr import get_ocr_provider
+    from test_equipment import MockOCR
+    from app.db.migrate_identification_evidence import migrate as migrate_identity
+    c,app,engine,a,b=owner_api;as_user(app,a)
+    app.dependency_overrides[get_ocr_provider]=lambda:MockOCR()
+    sid=c.post('/sessions',json={'session_name':'Identification selection'}).json()['session_id']
+    photo=c.post(f'/sessions/{sid}/images',files={'images':('front.png',image_bytes(),'image/png')},data={'view_labels':'["front"]','identification_flags':'[true]'}).json()[0]
+    assert photo['use_for_identification'] is True
+    migrate_identity(engine);migrate_identity(engine)
+    assert c.get(f'/sessions/{sid}/images').json()[0]['use_for_identification'] is True
+    state=c.post(f'/sessions/{sid}/equipment/identify').json()
+    assert state['ranked_candidates'][0]['candidate_id']=='abb-acs880-01'
+    path=f'/sessions/{sid}/images/{photo["id"]}/identification'
+    as_user(app,b)
+    assert c.patch(path,json={'use_for_identification':False}).status_code==404
+    as_user(app,a)
+    assert c.patch(path,json={'use_for_identification':False}).json()['use_for_identification'] is False
+    assert len(c.get(f'/sessions/{sid}/images').json())==1
+    assert c.post(f'/sessions/{sid}/equipment/identify').json()['ranked_candidates']==[]

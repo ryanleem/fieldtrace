@@ -34,7 +34,7 @@ def snapshot(db, owner, row):
     notes = db.scalars(select(SessionImage).where(SessionImage.session_id == owner.id,
         SessionImage.equipment_id == owner.confirmed_equipment_id).order_by(SessionImage.id)).all()
     return dict(session_id=str(owner.id), equipment_revision=owner.identification_revision,
-        revision=row.revision, inputs=row.inputs,
+        revision=row.revision, inputs={k: row.inputs.get(k, []) for k in FIELDS},
         equipment=dict(manufacturer=equipment.manufacturer, model=equipment.model_name,
                        family=equipment.equipment_family) if equipment else None,
         retrieval_filters=dict(equipment_model=equipment.retrieval_model or None,
@@ -58,6 +58,8 @@ def update(engine, session_id, payload):
         if payload.expected_revision is not None and payload.expected_revision != row.revision:
             raise StaleIdentification('Troubleshooting inputs changed; reload session')
         data = dict(row.inputs) if row.equipment_revision == owner.identification_revision else {k: [] for k in FIELDS}
+        if 'workspace_draft' in row.inputs:
+            data['workspace_draft'] = row.inputs['workspace_draft']
         values = payload.model_dump(exclude={'expected_revision', 'answer'})
         if payload.answer:
             values['follow_up_answers'] = [payload.answer]
