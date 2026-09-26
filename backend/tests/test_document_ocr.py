@@ -179,6 +179,7 @@ def test_scanned_ingestion_provenance_and_failed_replacement_roll_back(isolated_
         scan.new_page(width=300, height=400).insert_image(page.rect, stream=page.get_pixmap().tobytes('png'))
         scan.save(path)
     request = IngestRequest(filename='scan.pdf', title='Synthetic scanned fixture', equipment_model='ACS880')
+    settings.document_ocr_enabled = False
     with pytest.raises(ValueError, match='no extractable text'):
         ingest(engine, request, embedder, settings)
     settings.document_ocr_enabled = True
