@@ -19,13 +19,21 @@ PROMPTS = {
  'review': '''Classify EVERY supplied chunk RELEVANT, PARTIALLY_RELEVANT or NOT_RELEVANT.
 Assign the same short issue key to chunks addressing the same issue. Review applicability
 against equipment/context; mismatched or unestablished applicability is at most PARTIALLY_RELEVANT.
-STRONG requires directly useful applicable evidence for the reported symptom. Else WEAK.
+An observation alone (missing cover, smell, discoloration, noise, loose part, failure
+to start) is valid input. Relevant inspection/safety/maintenance passages need not
+prove a cause. STRONG requires directly useful applicable causal evidence; else WEAK.
 List only missing information, no advice or diagnosis.''',
  'conflict': '''Compare these top 2-3 chunks addressing the same issue. Return exactly
 their IDs. Classify CONSISTENT, COMPLEMENTARY, CONFLICTING or DIFFERENT_APPLICABILITY.
 Distinguish genuinely contradictory instructions from model/revision/operating-condition
 differences. Surface uncertainty instead of silently selecting a source.''',
- 'candidate': '''Generate a candidate suspected-cause result using only reviewed evidence.
+ 'candidate': '''Generate a candidate result using only reviewed evidence.
+When guidance_only is true, primary_cause must be null and alternative_causes empty.
+Return applicable inspection/safety/maintenance guidance even if a cause is unknown;
+do not require a fault code or specific symptom. Keep user/photo observations separate
+from manual-backed statements. With insufficient causal evidence use null primary_cause,
+retain useful cited checks and ask a useful follow-up. A missing cover, smell or visual
+abnormality alone does not establish an electrical or internal failure.
 Write for a technician: short plain sentences, one or two per rationale. Avoid
 repeating the cause label in the rationale. Keep necessary source qualifications,
 uncertainty and exact citations even when simplifying. Use null primary_cause if insufficient. Every technical claim and action needs explicit

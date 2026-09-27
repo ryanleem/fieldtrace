@@ -19,7 +19,7 @@ def follow_up_question(context):
     if not context['inputs'].get('measurements'):
         if any('overheat' in s.lower() for s in context['inputs'].get('reported_symptoms', [])):
             return 'What temperature was already measured, at which location, and under what operating conditions?'
-        return 'What values have you already measured, including units and measurement location?'
+        return 'What else have you observed, when does it happen, and is any fault code displayed?'
     return 'What exact fault code or additional observation can you provide, and under what operating conditions?'
 
 
@@ -28,7 +28,7 @@ def insufficient(context, status='insufficient_evidence'):
             'technical_claims': [], 'recommended_actions': [], 'confidence': 'LOW',
             'next_question': follow_up_question(context), 'missing_information': [],
             'sources': [], 'conflicts': [],
-            'message': 'The available evidence is insufficient to support a suspected cause.'}
+            'message': 'A specific failure cannot yet be confirmed. Review any relevant manual passages and add another observation.'}
 
 
 def confidence(*, primary_supported, strong_evidence, strong_retrieval, conflict,
@@ -130,13 +130,16 @@ class Pipeline:
                 reviewed_evidence.pop(rating.chunk_id, None)
                 if rating.relevance == 'RELEVANT':
                     reviewed_evidence[rating.chunk_id] = evidence[rating.chunk_id]
-            # Weak evidence cannot support a candidate. Do not let a subsequent
-            # optional conflict call turn this valid follow-up path into failure.
-            if review.strength == 'WEAK' or not relevant:
+            # Weak causal evidence can still contain applicable inspection guidance.
+            # Never use partially applicable passages to manufacture that guidance.
+            if not relevant:
                 audit['conflicts'] = []
                 answer = insufficient(context)
                 answer['sources'] = self.sources(reviewed_evidence, reviewed_evidence)
                 return answer
+            guidance_only = review.strength == 'WEAK'
+            if guidance_only:
+                usable = {r.chunk_id: evidence[r.chunk_id] for r in relevant}
             groups = defaultdict(list)
             for r in review.chunks:
                 if r.chunk_id in usable:
@@ -154,15 +157,31 @@ class Pipeline:
             audit['conflicts'] = conflicts
             unresolved = any(r['relationship'] in {'CONFLICTING', 'DIFFERENT_APPLICABILITY'} for r in conflicts)
             candidate = self.call('candidate', {'context': context, 'evidence': list(usable.values()),
-                'conflicts': conflicts, 'review': review.model_dump(), 'retry': bool(attempt)})
+                'conflicts': conflicts, 'review': review.model_dump(), 'retry': bool(attempt),
+                'guidance_only': guidance_only})
             audit['candidate'] = candidate.model_dump()
+            if guidance_only:
+                # Enforce the LOW/no-diagnosis path even if the provider ignores
+                # guidance_only. Do not leak its cause-supporting claims as facts.
+                causes = ([candidate.primary_cause] if candidate.primary_cause else []) + candidate.alternative_causes
+                causal_ids = {cid for cause in causes for cid in cause.claim_ids}
+                candidate = candidate.model_copy(update={'primary_cause': None, 'alternative_causes': [],
+                    'technical_claims': [c for c in candidate.technical_claims if c.claim_id not in causal_ids]})
             result = self.filter_candidate(candidate, usable, audit['verifications'], unresolved, context)
             if result is None:
                 audit['primary_supported'] = False
                 label = candidate.primary_cause.label if candidate.primary_cause else 'reported symptom'
                 refinement = 'Find applicable documentation supporting or excluding this hypothesis: ' + label[:300]
                 continue  # one refined retrieval; never promote an alternative
-            audit['primary_supported'] = True
+            audit['primary_supported'] = result['primary_cause'] is not None
+            if result['primary_cause'] is None:
+                result.pop('_partial')
+                result['confidence'] = 'LOW'
+                result['conflicts'] = self.public_conflicts(conflicts, evidence)
+                ids = [cid for item in result['technical_claims'] + result['recommended_actions'] for cid in item['citation_chunk_ids']]
+                ids += result.get('question_sources', []) + [cid for r in conflicts for cid in r['chunk_ids']]
+                result['sources'] = self.sources({**reviewed_evidence, **evidence}, list(reviewed_evidence) + ids)
+                return result
             primary_ids = result['primary_cause']['citation_chunk_ids']
             relevant_ids = {r.chunk_id for r in relevant}
             strong_retrieval = all(cid in relevant_ids for cid in primary_ids) and any(
@@ -192,7 +211,7 @@ class Pipeline:
     def filter_candidate(self, candidate, evidence, log, unresolved, context):
         primary = candidate.primary_cause
         original = {c.claim_id: c for c in candidate.technical_claims}
-        if not primary or len(original) != len(candidate.technical_claims): return None
+        if len(original) != len(candidate.technical_claims): return None
         verified, partial = {}, False
         for claim in candidate.technical_claims:
             text, weakened = self.verify(claim.text, claim.citation_chunk_ids, evidence, log, claim.claim_id)
@@ -213,9 +232,10 @@ class Pipeline:
             if not label or not rationale: return None
             return dict(label=label, rationale=rationale, claim_ids=c.claim_ids, citation_chunk_ids=ids)
 
-        primary = cause(primary, 'primary')
-        if primary is None: return None
-        alternatives = [v for i, c in enumerate(candidate.alternative_causes) if (v := cause(c, f'alternative:{i}'))]
+        if primary:
+            primary = cause(primary, 'primary')
+            if primary is None: return None
+        alternatives = [v for i, c in enumerate(candidate.alternative_causes) if (v := cause(c, f'alternative:{i}'))] if primary else []
         actions = []
         if not unresolved and context.get('equipment'):
             for i, action in enumerate(candidate.recommended_actions):
@@ -225,17 +245,18 @@ class Pipeline:
                 if text: actions.append(dict(action= text, citation_chunk_ids=action.citation_chunk_ids))
         question = follow_up_question(context)
         question_ids = []
+        information_ids = primary['citation_chunk_ids'] if primary else list(evidence)[:8]
         if candidate.next_question:
             # A question also cannot smuggle an unsupported action/assertion.
             # Bind it explicitly to the primary's evidence in the candidate audit.
-            question_ids = primary['citation_chunk_ids']
+            question_ids = information_ids
             text, weakened = self.verify(candidate.next_question, question_ids, evidence, log, 'question')
             partial |= weakened
             if text and text.rstrip().endswith('?'): question = text
             else: question_ids = []
         missing = []
         for i, item in enumerate(candidate.missing_information[:3]):
-            text, weakened = self.verify('Information needed: ' + item, primary['citation_chunk_ids'],
+            text, weakened = self.verify('Information needed: ' + item, information_ids,
                                          evidence, log, f'missing:{i}')
             partial |= weakened
             # A supported rewrite may still change an information request into
@@ -244,10 +265,11 @@ class Pipeline:
         if unresolved:
             question = 'Which exact equipment model, manual revision, and operating conditions apply to this inspection?'
             question_ids = []
-        return {'status': 'suspected_cause', 'primary_cause': primary, 'alternative_causes': alternatives,
+        return {'status': 'suspected_cause' if primary else 'insufficient_evidence', 'primary_cause': primary, 'alternative_causes': alternatives,
             'technical_claims': list(verified.values()), 'recommended_actions': actions,
             'next_question': question, 'question_sources': question_ids, 'missing_information': missing,
-            'message': 'Suspected cause based on the cited documentation; not a confirmed diagnosis.', '_partial': partial}
+            'message': ('Suspected cause based on the cited documentation; not a confirmed diagnosis.' if primary else
+                        'A specific failure cannot yet be confirmed. The passages and verified checks below can help you gather more information.'), '_partial': partial}
 
     @staticmethod
     def sources(evidence, ids):
