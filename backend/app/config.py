@@ -18,7 +18,8 @@ class Settings(BaseSettings):
     supabase_jwt_audience: str = 'authenticated'
     demo_requests_per_minute: int = Field(120, ge=1, le=1000)
     demo_writes_per_hour: int = Field(60, ge=1, le=1000)
-    demo_provider_actions_per_hour: int = Field(8, ge=1, le=100)
+    demo_provider_actions_per_hour: int = Field(60, ge=1, le=100)
+    demo_provider_actions_per_user_per_hour: int = Field(30, ge=1, le=100)
     demo_upload_quota_bytes: int = Field(256 * 1024 * 1024, ge=1024)
     postgres_password: str | None = Field(None, exclude=True, repr=False)
     database_url: str = Field(default="", validate_default=True, repr=False)

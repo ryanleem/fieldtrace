@@ -43,23 +43,36 @@ Set `APP_ENV=production` on Railway (also the Docker/cloud-launcher default). Th
   64 KiB otherwise, with 30 seconds to receive a body. Upload large photos one at a time.
   Existing JPEG/PNG/WEBP, 10 MiB per image, pixel and session-count checks still apply.
 - Allows eight simultaneous requests and only one mutating request at a time.
-  Global rolling limits default to 120 requests/minute, 60 mutations/hour and eight
-  provider actions/hour. Healthchecks bypass rate budgets but not concurrency limits.
-  All clients share these limits; forwarding headers cannot reset them. Attempts count
-  even when they fail. HTTP 429 includes a retry hint; an hourly budget may need longer.
+  Global rolling limits default to 120 requests/minute, 60 mutations/hour and 60
+  provider actions/hour. Each authenticated user also has a separate 30-provider-actions/hour
+  allowance, keyed by the signature/issuer/audience/expiry-verified Supabase user UUID.
+  All sessions and refreshed tokens for that user share the allowance. Proxy IPs and
+  forwarding headers are never limiter keys. Public/unauthenticated traffic retains the
+  global request/write guards and cannot run provider actions. Healthchecks bypass rate
+  budgets but not concurrency limits. Dispatched provider failures still count. Body-level rejections and 401/403/404
+  auth/ownership denials do not consume provider capacity; request/write limits still apply.
+  HTTP 429 reports the actual remaining budget window in Retry-After (up to an hour);
+  concurrency rejections use a 60-second retry hint. Safe guard logs identify the exhausted
+  budget or concurrency condition without recording session IDs or proxy headers.
 - Disables batch image analysis; use individual image analysis. Each admitted reasoning
   action still has the existing maximum of 48 LLM calls; one image can make two attempts.
-  Eight actions is **not** a dollar budget or an eight-call limit.
+  Action limits are **not** dollar budgets or individual LLM-call limits.
 - Caps stored uploads at 256 MiB, conservatively including the incoming multipart body.
   HTTP 507 requires operator cleanup/archival or a deliberate quota increase. No automatic
   data deletion occurs. Image filenames are generated and resolved within the session directory.
 - Returns generic validation/service errors without exception text or input echoes.
 
 Optional backend variables: `DEMO_REQUESTS_PER_MINUTE=120`,
-`DEMO_WRITES_PER_HOUR=60`, `DEMO_PROVIDER_ACTIONS_PER_HOUR=8`,
+`DEMO_WRITES_PER_HOUR=60`, `DEMO_PROVIDER_ACTIONS_PER_HOUR=60` (global),
+`DEMO_PROVIDER_ACTIONS_PER_USER_PER_HOUR=30`,
 `DEMO_UPLOAD_QUOTA_BYTES=268435456`. Run **one replica and one Uvicorn worker**;
-the launcher pins one worker. Counters are in memory and reset on restart. They are
-only prototype safeguards: an attacker can exhaust the shared budget or an authenticated
+the launcher pins one worker. An existing explicit `DEMO_PROVIDER_ACTIONS_PER_HOUR=8`
+remains an eight-action global cap; change it to 60 during an approved rollout to adopt
+the new defaults. No environment is changed automatically. The unchanged 60-write/hour
+limit includes uploads, saves and other mutations, so it can bind before provider limits.
+Counters are in memory and reset on restart; expired user buckets are pruned. A global
+ceiling of 60 bounds aggregate provider use across accounts; it is not a spending guarantee.
+These are only prototype safeguards: an attacker can exhaust the shared budget or an authenticated
 user can consume credits within the limits. The old deployed version also allows access
 by known session ID; the reviewed authenticated version rejects other users regardless
 of UUID knowledge. Do not store sensitive demo data.

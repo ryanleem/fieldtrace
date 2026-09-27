@@ -1,17 +1,25 @@
-"""Single-process public-demo guard. This is deliberately NOT authentication."""
+"""Single-process demo limits; provider keys use the existing verified auth policy."""
 import asyncio
+import logging
+from math import ceil
 from collections import deque
 from time import monotonic
 
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
+from starlette.requests import Request
+from starlette.concurrency import run_in_threadpool
+from app import auth
+
+logger = logging.getLogger(__name__)
 
 
 class DemoSafetyMiddleware:
     def __init__(self, app, settings):
         self.app, self.settings = app, settings
         self.requests, self.writes, self.providers = deque(), deque(), deque()
+        self.provider_users = {}
         self.active = 0
         self.writing = False
 
@@ -19,8 +27,8 @@ class DemoSafetyMiddleware:
         if scope['type'] != 'http' or self.settings.app_env != 'production':
             return await self.app(scope, receive, send)
 
-        async def reject(status, message):
-            headers = {'Retry-After': '60'} if status == 429 else {}
+        async def reject(status, message, retry_after=60):
+            headers = {'Retry-After': str(retry_after)} if status == 429 else {}
             await JSONResponse({'detail': message}, status_code=status, headers=headers)(scope, receive, send)
 
         path = scope['path'].rstrip('/')
@@ -31,31 +39,46 @@ class DemoSafetyMiddleware:
         if path.endswith('/images/analyze-all') or path.startswith('/documents'):
             return await reject(403, 'This operation is unavailable in the public demo.')
         now = monotonic()
-        budgets = [(self.requests, 60, self.settings.demo_requests_per_minute)]
+        budgets = [('requests', self.requests, 60, self.settings.demo_requests_per_minute)]
         if write:
-            budgets.append((self.writes, 3600, self.settings.demo_writes_per_hour))
-        if provider:
-            budgets.append((self.providers, 3600, self.settings.demo_provider_actions_per_hour))
-        for queue, window, limit in budgets:
+            budgets.append(('writes', self.writes, 3600, self.settings.demo_writes_per_hour))
+        for _, queue, window, limit in budgets:
             while queue and queue[0] <= now - window:
                 queue.popleft()
         # Global counters intentionally ignore spoofable forwarding/client headers.
         if self.active >= 8 or (write and self.writing):
+            logger.warning('Demo guard rejection reason=%s active=%d writing=%s',
+                           'concurrency' if self.active >= 8 else 'concurrent_write', self.active, self.writing)
             return await reject(429, 'Demo is busy. Retry later.')
-        if path != '/health' and any(len(q) >= limit for q, _, limit in budgets):
-            return await reject(429, 'Demo request budget reached. Retry later.')
+        async def check_budgets(entries, checked_at):
+            exhausted = [(name, q, window, limit) for name, q, window, limit in entries if len(q) >= limit]
+            if not exhausted:
+                return False
+            retry_after = max(max(1, ceil(q[len(q)-limit] + window - checked_at)) for _, q, window, limit in exhausted)
+            for name, q, window, limit in exhausted:
+                # No paths, session/user IDs, proxy headers, or credentials.
+                logger.warning('Demo guard rejection reason=%s used=%d limit=%d window_seconds=%d retry_after=%d',
+                               name, len(q), limit, window, retry_after)
+            await reject(429, 'Demo request budget reached. Retry later.', retry_after)
+            return True
+        if path != '/health' and await check_budgets(budgets, now):
+            return
         if path != '/health':
-            for queue, _, _ in budgets:
+            for _, queue, _, _ in budgets:
                 queue.append(now)
         self.active += 1
         if write:
             self.writing = True
         started = False
+        dispatched = False
+        response_status = None
+        reservation = None
 
         async def tracked_send(message):
-            nonlocal started
+            nonlocal started, response_status
             if message['type'] == 'http.response.start':
                 started = True
+                response_status = message['status']
             await send(message)
 
         try:
@@ -85,6 +108,42 @@ class DemoSafetyMiddleware:
                 used = sum(p.stat().st_size for p in self.settings.uploads_dir.rglob('*') if p.is_file())
                 if used + len(body) > self.settings.demo_upload_quota_bytes:
                     return await reject(507, 'Demo image storage budget reached.')
+            if provider:
+                # Body/request limits run first; invalid/public traffic cannot
+                # reserve any paid-provider capacity. Never use proxy IPs or
+                # session IDs, and never decode a token without verification.
+                authorization = Request(scope).headers.get('authorization', '')
+                scheme, _, token = authorization.partition(' ')
+                if scheme.lower() != 'bearer' or not token:
+                    return await reject(401, 'Sign in to continue.')
+                try:
+                    user = await run_in_threadpool(auth.verify_token, token, self.settings)
+                except HTTPException as error:
+                    return await reject(error.status_code, 'Sign in to continue.' if error.status_code == 401 else 'Authentication service unavailable.')
+                scope['fieldtrace.verified_user'] = user
+                admitted_at = monotonic()
+                # Prune idle user buckets as well as active ones: memory is
+                # bounded by users admitted within the global hourly ceiling.
+                for key, queue in list(self.provider_users.items()):
+                    while queue and queue[0] <= admitted_at - 3600:
+                        queue.popleft()
+                    if not queue:
+                        del self.provider_users[key]
+                while self.providers and self.providers[0] <= admitted_at - 3600:
+                    self.providers.popleft()
+                user_queue = self.provider_users.get(user, deque())
+                provider_budgets = [
+                    ('provider_actions_user', user_queue, 3600, self.settings.demo_provider_actions_per_user_per_hour),
+                    ('provider_actions_global', self.providers, 3600, self.settings.demo_provider_actions_per_hour),
+                ]
+                if await check_budgets(provider_budgets, admitted_at):
+                    return
+                # No await between checking/reserving; the mutation guard also
+                # serializes these operations within the single worker.
+                self.provider_users[user] = user_queue
+                user_queue.append(admitted_at)
+                self.providers.append(admitted_at)
+                reservation = (user, user_queue, admitted_at)
             delivered = False
 
             async def bounded_receive():
@@ -94,6 +153,7 @@ class DemoSafetyMiddleware:
                 delivered = True
                 return {'type': 'http.request', 'body': bytes(body), 'more_body': False}
 
+            dispatched = True
             await self.app(scope, bounded_receive, tracked_send)
         except TimeoutError:
             if not started:
@@ -103,6 +163,18 @@ class DemoSafetyMiddleware:
             if not started:
                 await reject(503, 'Service unavailable. Retry later.')
         finally:
+            # Reserve provider capacity atomically, but do not charge body-level
+            # rejection or auth/ownership denial as a provider action. Keep the
+            # request/write budgets charged so invalid traffic remains limited.
+            # Provider/unknown server failures still consume capacity.
+            if reservation and (not dispatched or response_status in {401, 403, 404}):
+                user, queue, admitted_at = reservation
+                if admitted_at in self.providers:
+                    self.providers.remove(admitted_at)
+                if admitted_at in queue:
+                    queue.remove(admitted_at)
+                if not queue:
+                    self.provider_users.pop(user, None)
             self.active -= 1
             if write:
                 self.writing = False
