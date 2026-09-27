@@ -180,7 +180,12 @@ def test_api_multipart_identify_and_confirm(equipment_db, monkeypatch):
         assert state['confidence'] == 'HIGH' and state['mismatch_warnings']
         confirmed = client.post(path + '/confirm', json={'equipment_id': 'abb-acs880-01', 'identification_revision': state['identification_revision']})
         assert confirmed.status_code == 200
-        assert client.get(path).json()['confirmed_equipment_id'] == 'abb-acs880-01'
+        confirmed_state = confirmed.json()
+        assert confirmed_state['confirmation_status'] == 'CONFIRMED'
+        assert confirmed_state['confirmed_equipment_id'] == 'abb-acs880-01'
+        assert confirmed_state['confirmed_model'] == 'ACS880-01'
+        assert confirmed_state['confirmed_equipment_family']
+        assert client.get(path).json() == confirmed_state
         assert client.post(path + '/confirm', json={'equipment_id': 'fabricated-model'}).status_code == 422
         assert client.post(path + '/identify', data={'image_roles': '["invalid"]'}, files=[('images', ('x.png', image_bytes()))]).status_code == 422
         assert client.post(path + '/identify', files=[('images', ('x.png', b'bad'))]).status_code == 422
