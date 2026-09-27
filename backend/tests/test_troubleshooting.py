@@ -400,7 +400,17 @@ def test_provider_failure_persisted_without_fake_answer(troubleshooting_db):
 @pytest.mark.integration
 def test_api_update_symptom_followup_and_revision_conflict(troubleshooting_db, monkeypatch):
     engine, settings, sid, embedder = troubleshooting_db
+    # The public route uses the database corpus, unlike explicitly injected
+    # service retrievers. Seed genuine indexed coverage before mocking search.
+    from test_retrieval import make_pdf
+    from app.schemas.document import IngestRequest
+    from app.services.ingestion import ingest
+    make_pdf(settings.manuals_dir, 'api-fixture.pdf', 'Synthetic manual: restricted airflow may cause overheating.')
+    ingest(engine, IngestRequest(filename='api-fixture.pdf', title='API fixture',
+        equipment_model='ACS880', equipment_family='ACS880 Drives'), embedder, settings)
     app = FastAPI(); app.include_router(api.router)
+    from conftest import authenticated_client
+    authenticated_client(app, monkeypatch, engine, sid)
     monkeypatch.setattr(api, 'get_engine', lambda: engine)
     monkeypatch.setattr(api, 'get_settings', lambda: settings)
     monkeypatch.setattr(service, 'retrieve', lambda *args: [evidence()])
@@ -493,3 +503,31 @@ def test_completed_result_becomes_stale_and_new_equipment_resets_inputs(troubles
     state = service.update(engine, sid, TroubleshootingInput(reported_symptoms=['Different issue']))
     assert state['reported_symptoms'] == ['Different issue']
     assert len(state['retrieved_evidence_history']) == 1
+
+
+@pytest.mark.parametrize('relevance,expected', [('RELEVANT', 1), ('PARTIALLY_RELEVANT', 0), ('NOT_RELEVANT', 0)])
+def test_low_evidence_exposes_only_reviewed_relevant_sources(relevance, expected):
+    class ReviewOnly(MockLLM):
+        def complete(self, stage, payload):
+            assert stage == 'review'
+            response = super().complete(stage, payload)
+            for chunk in response['output']['chunks']:
+                chunk['relevance'] = relevance
+            return response
+    row = evidence()
+    _, result = pipeline(ReviewOnly(strength='WEAK'), rows=[row])
+    assert result['confidence'] == 'LOW' and result['primary_cause'] is None
+    assert result['technical_claims'] == result['recommended_actions'] == []
+    assert len(result['sources']) == expected
+    if expected:
+        assert result['sources'][0]['chunk_id'] == str(row.chunk_id)
+        assert result['sources'][0]['page_number'] == row.page_number
+
+
+def test_unsupported_primary_keeps_relevant_documents_without_publishing_claim():
+    row = evidence()
+    p, result = pipeline(MockLLM(unsupported=['Possible restricted airflow']), rows=[row])
+    assert len(p.audit['attempts']) == 2
+    assert result['primary_cause'] is None and result['confidence'] == 'LOW'
+    assert result['sources'][0]['chunk_id'] == str(row.chunk_id)
+    assert result['technical_claims'] == []

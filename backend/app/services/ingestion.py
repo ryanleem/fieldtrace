@@ -48,13 +48,13 @@ def ingest(engine, request: IngestRequest, embedder, settings=None, *, replace=F
         if existing:
             session.delete(existing)
             session.flush()
-        pages = parse_pdf(path, document_id)
+        pages = parse_pdf(path, document_id, ocr_enabled=settings.document_ocr_enabled)
         budget = embedder.max_tokens - 48
         if budget < 32:
             raise ValueError("Selected embedding model has insufficient context for technical chunks")
         chunks = chunk_pages(pages, embedder.token_count, max_tokens=budget)
         if not chunks:
-            raise ValueError("PDF has no extractable text; OCR is not implemented in Step 1")
+            raise ValueError("PDF has no extractable text; enable document OCR or inspect the original pages")
         warnings = [{"page_number": page.page_number, "messages": page.warnings}
                     for page in pages if page.warnings]
         metadata = request.model_dump(exclude={"filename", "verified_sha256"})

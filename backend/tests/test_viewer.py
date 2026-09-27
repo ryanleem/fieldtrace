@@ -36,6 +36,8 @@ def test_image_view_enforces_session_and_safe_stored_path(inspection_db,monkeypa
     engine,settings,sid,_=inspection_db
     image=upload(engine,settings,sid,view_label='front')
     app=FastAPI();app.include_router(viewer.router)
+    from conftest import authenticated_client
+    authenticated_client(app, monkeypatch, engine, sid)
     monkeypatch.setattr(viewer,'get_engine',lambda:engine);monkeypatch.setattr(viewer,'get_settings',lambda:settings)
     client=TestClient(app);path=f'/sessions/{sid}/images/{image["id"]}/file'
     response=client.get(path)
@@ -44,3 +46,18 @@ def test_image_view_enforces_session_and_safe_stored_path(inspection_db,monkeypa
     assert client.get(f'/sessions/{uuid4()}/images/{image["id"]}/file').status_code==404
     with Session(engine) as db,db.begin():db.get(SessionImage,image['id']).stored_path='../.env'
     assert client.get(path).status_code==422
+
+
+@pytest.mark.integration
+def test_low_evidence_review_source_remains_viewable_after_reopen(troubleshooting_db):
+    engine, settings, sid, embedder = troubleshooting_db
+    row = evidence()
+    service.update(engine, sid, TroubleshootingInput(reported_symptoms=['Fault 5091']))
+    state = service.run(engine, sid, MockLLM(strength='WEAK'), embedder, settings, lambda _: [row])
+    assert state['result']['primary_cause'] is None
+    assert service.get_state(engine, sid)['result']['sources'] == state['result']['sources']
+    rid = UUID(state['retrieved_evidence_history'][-1]['run_id'])
+    source = viewer.cited_source(engine, sid, rid, row.chunk_id)
+    assert source['chunk_text'] == row.chunk_text
+    assert source['document_id'] == str(row.document_id)
+    assert source['section_title'] == row.section_title

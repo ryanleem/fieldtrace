@@ -1,6 +1,7 @@
 """Page-local extraction with conservative headings and bordered table rows.
 
-Coordinates are PDF points, top-left origin. No OCR or image interpretation.
+Coordinates are unrotated crop-local PDF points, top-left origin. Optional local OCR for textless pages.
+No diagram interpretation; OCR output is unverified transcription.
 Unstructured page text is retained separately even when structured extraction works.
 """
 from dataclasses import dataclass, field
@@ -9,6 +10,10 @@ import re
 from uuid import UUID
 
 import pymupdf
+
+
+class DocumentOCRError(RuntimeError):
+    """OCR failed; do not silently replace its output with empty fallback text."""
 
 
 @dataclass
@@ -41,7 +46,36 @@ def norm(text):
     return re.sub(r"\s+", " ", text).strip().casefold().lstrip("■ ")
 
 
-def parse_pdf(path: Path, document_id: UUID):
+def extract_scanned_page(source, result, provider):
+    """Bounded RGB raster; match native extraction's unrotated PDF coordinates."""
+    from PIL import Image
+    rect = source.rect
+    scale = min(2.0, 2400 / max(rect.width, rect.height))
+    pix = source.get_pixmap(matrix=pymupdf.Matrix(scale, scale), colorspace=pymupdf.csRGB, alpha=False)
+    image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+    ocr = provider.extract(image)
+    result.text = clean(ocr.raw_text)
+    result.extraction_method = "ocr:" + ocr.provider
+    result.warnings = ["OCR transcription: verify technical identifiers and table relationships against the original page."]
+    result.warnings.extend(ocr.warnings)
+    for i, line in enumerate(ocr.lines):
+        text = clean(line.get("text", ""))
+        if not text:
+            continue
+        points = line.get("bbox") or []
+        box = None
+        if points:
+            xs, ys = zip(*points)
+            box = [max(0, min(xs) * rect.width / pix.width), max(0, min(ys) * rect.height / pix.height),
+                   min(rect.width, max(xs) * rect.width / pix.width), min(rect.height, max(ys) * rect.height / pix.height)]
+        if box is not None:
+            box = list(pymupdf.Rect(box) * source.derotation_matrix)
+        result.units.append(Unit(text, f"p{result.page_number}-ocr-{i}", box, content_type="ocr_text"))
+    if not result.units and result.text:
+        result.units = [Unit(result.text, f"p{result.page_number}-ocr", content_type="ocr_text")]
+
+
+def parse_pdf(path: Path, document_id: UUID, *, ocr_enabled=False, ocr_provider=None):
     pages = []
     with pymupdf.open(path) as pdf:
         if pdf.needs_pass:
@@ -56,7 +90,19 @@ def parse_pdf(path: Path, document_id: UUID):
                 result.text = clean(source.get_text("text", sort=True))
                 result.printed_page_label = source.get_label() or None
                 if not result.text:
-                    result.warnings.append("No extractable text: blank, image-only, or scanned page; OCR not implemented.")
+                    if ocr_enabled:
+                        try:
+                            if ocr_provider is None:
+                                from app.services.equipment_ocr import get_ocr_provider
+                                ocr_provider = get_ocr_provider()
+                            extract_scanned_page(source, result, ocr_provider)
+                        except Exception as error:
+                            raise DocumentOCRError("Document OCR failed on page " + str(index + 1)) from error
+                        if not result.text:
+                            result.warnings.append("OCR found no text; page may be blank or contain only graphics.")
+                        pages.append(result)
+                        continue
+                    result.warnings.append("No extractable text; enable DOCUMENT_OCR_ENABLED for textless scanned pages.")
                 chapter = next((title for start, title in reversed(chapters) if start <= index + 1), None)
                 table_boxes = []
                 positioned = []
@@ -141,6 +187,8 @@ def parse_pdf(path: Path, document_id: UUID):
                     result.warnings.append("No structured content found; retained full page text.")
                 if source.get_images():
                     result.warnings.append("Embedded images present; only surrounding text/captions extracted, no image interpretation.")
+            except DocumentOCRError:
+                raise
             except Exception as error:
                 from pypdf import PdfReader
                 try:

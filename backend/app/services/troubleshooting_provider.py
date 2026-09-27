@@ -26,7 +26,9 @@ their IDs. Classify CONSISTENT, COMPLEMENTARY, CONFLICTING or DIFFERENT_APPLICAB
 Distinguish genuinely contradictory instructions from model/revision/operating-condition
 differences. Surface uncertainty instead of silently selecting a source.''',
  'candidate': '''Generate a candidate suspected-cause result using only reviewed evidence.
-Use null primary_cause if insufficient. Every technical claim and action needs explicit
+Write for a technician: short plain sentences, one or two per rationale. Avoid
+repeating the cause label in the rationale. Keep necessary source qualifications,
+uncertainty and exact citations even when simplifying. Use null primary_cause if insufficient. Every technical claim and action needs explicit
 citation_chunk_ids. Every cause references technical_claim claim_ids. Causes remain
 suspected possibilities, not established equipment facts. Concise rationale must say
 why the documentation supports this hypothesis, not expose internal reasoning.

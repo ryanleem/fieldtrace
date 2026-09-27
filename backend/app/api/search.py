@@ -1,11 +1,13 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.db.session import get_engine
 from app.schemas.search import SearchRequest, SearchResponse
 from app.services.embeddings import get_embedder
 from app.services.hybrid_search import search_all
 
-router = APIRouter(tags=["evidence"])
+from app.auth import require_user
+
+router = APIRouter(dependencies=[Depends(require_user)], tags=["evidence"])
 
 
 @router.post("/search", response_model=SearchResponse)

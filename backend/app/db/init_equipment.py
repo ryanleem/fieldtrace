@@ -10,6 +10,8 @@ from app.models.equipment import Equipment, EquipmentSession
 
 def initialize_equipment(engine=None):
     engine = engine or get_engine()
+    from app.db.migrate_identification_evidence import migrate
+    migrate(engine)
     catalog = json.loads((ROOT / "data/equipment_catalog.json").read_text(encoding="utf-8"))
     with engine.begin() as connection:
         connection.execute(text("SELECT pg_advisory_xact_lock(41088002)"))

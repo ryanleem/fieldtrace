@@ -8,6 +8,10 @@ def initialize_vision(engine=None):
         connection.execute(text('SELECT pg_advisory_xact_lock(41088003)'))
         for model in (SessionImage, VisualFinding, AggregatedVisualFinding):
             model.__table__.create(connection, checkfirst=True)
+    from app.db.migrate_image_fingerprints import migrate
+    migrate(engine)
+    from app.db.migrate_identification_evidence import migrate as migrate_identity
+    migrate_identity(engine)
 
 
 if __name__ == '__main__':

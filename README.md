@@ -2,6 +2,12 @@
 
 FieldTrace is our ABB Accelerator prototype for **multimodal industrial troubleshooting**.
 
+## Open FieldTrace
+
+**Live site:** https://fieldtrace-blush.vercel.app
+
+> The live production site currently reflects the deployed production backend. The newest authentication, saved-session, OCR/manual-coverage, and equipment-confirmation fixes are on `feat/scanned-manua-l-ocr-coverage` until they are deployed and merged.
+
 A technician can:
 1. upload equipment/nameplate photos,
 2. confirm the equipment model,
@@ -33,7 +39,24 @@ citations. Persistent follow-up keeps the investigation in the same session.
 
 See the [demo script](DEMO.md) and [demo checklist](DEMO-CHECKLIST.md).
 
+## Accounts and saved cases (local implementation)
+
+Live use now requires Supabase Auth configuration. Supabase handles login only;
+FieldTrace data stays in Railway PostgreSQL. Signed-in technicians can name, rename
+and reopen their cases from **My Sessions**. The name dialog preserves fresh intake
+drafts until a case is created. Use `/?demo=true` for the public labeled replay.
+
+Set backend `SUPABASE_URL` and frontend `VITE_SUPABASE_URL` /
+`VITE_SUPABASE_ANON_KEY` (public key only), then apply the additive session migration.
+See [authentication setup and migration](docs/DEPLOYMENT.md#authentication-and-saved-sessions-pending-review-not-deployed).
+These changes have not been deployed; the current hosted demo is unchanged.
+
+For optional scanned-manual OCR and the indexed-manual preflight, see
+[OCR and manual coverage](docs/SCANNED-MANUAL-OCR-AND-COVERAGE.md).
+
 ## Start here if you are a teammate
+
+The current integration branch is **`feat/scanned-manua-l-ocr-coverage`**. Start from that branch for new work until the pending changes are merged to `main`.
 
 You do **not** need Ryan's local files. Everything needed to collaborate is in this private repository, except:
 - API keys,
@@ -52,10 +75,11 @@ cd fieldtrace
 
 ### 2. Create your own branch
 
-Do not work directly on `main`.
+Do not work directly on `main` or the shared integration branch. Base new work on the current integration branch:
 
 ```powershell
-git checkout main
+git fetch origin
+git switch feat/scanned-manua-l-ocr-coverage
 git pull
 git checkout -b your-branch-name
 ```
@@ -160,17 +184,21 @@ http://127.0.0.1:5173
 
 Implemented:
 - ABB manual ingestion
+- optional OCR for image-only/scanned manual pages
+- indexed-manual coverage preflight before troubleshooting
 - semantic + keyword hybrid search
 - citation-backed retrieval
 - nameplate/OCR equipment identification
-- equipment confirmation
-- multi-photo visible issue analysis
+- equipment confirmation with persisted reopen/refresh state
+- multi-photo visible issue analysis with explicit per-photo re-analysis
+- visual findings label the supporting uploaded photo as evidence
 - troubleshooting session state
 - evidence review
 - technical claim verification
 - High / Medium / Low confidence
 - follow-up troubleshooting
 - exact source viewer
+- relevant ABB passages remain reviewable on low-evidence results without being presented as proof of a diagnosis
 - technician-facing React UI
 
 Current equipment identification catalog:
@@ -271,10 +299,14 @@ npm test
 npm run test:e2e
 ```
 
-Latest validated baseline:
-- **174 backend tests**
-- **6 frontend unit tests**
-- **21 browser tests**
+Latest validation on the current integration branch:
+- **273 backend/integration/corpus/coverage tests passed**
+- **42 frontend unit tests passed**
+- **62 browser tests reported passing**; the local Playwright runner hung during shutdown and was interrupted after the tests completed
+- frontend production build passed
+- `git diff --check` passed
+
+The backend corpus run used the real local ABB corpus: **2 manuals, 736 pages, 11,085 chunks**.
 
 ## Before you commit
 
@@ -316,3 +348,17 @@ Detailed implementation notes:
 
 See [Vercel + Railway deployment](docs/DEPLOYMENT.md) for the deployed architecture,
 public-demo safeguards, persistent uploads and corpus setup. The local setup above is unchanged.
+
+For **both Vercel Production and Preview**, set these build variables separately:
+
+- `VITE_SUPABASE_URL` — Supabase project HTTPS URL.
+- `VITE_SUPABASE_ANON_KEY` — matching public publishable/anon key; never a service-role key.
+- `VITE_API_BASE_URL` — compatible Railway backend HTTPS origin, without `/api`.
+- `VITE_DEMO_MODE=false` — live mode; labeled replay remains at `/?demo=true`.
+
+Preview variables may also have branch-specific overrides; check those for
+`feat/scanned-manua-l-ocr-coverage`. Production settings do not fill Preview settings.
+Vercel uses `npm run build:hosted` to reject incomplete live configuration. Rebuild
+the intended preview after changing variables; an existing bundle does not update.
+Use a compatible preview backend and authorize its frontend origin in Railway CORS
+and Supabase redirect settings. See the deployment guide for scope and compatibility checks.

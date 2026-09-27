@@ -5,9 +5,10 @@ Vercel serves the static React/Vite frontend. A Railway Docker service runs Fast
 and connects to Railway PostgreSQL with pgvector. Backend Root Directory is the
 repository root; Vercel Root Directory is `frontend`. Do not deploy FastAPI to Vercel.
 
-The prototype lacks authentication and tenant isolation. The production guard below
-limits abuse but cannot identify authorized users. Use authorized demo data and
-supervised access; this is not production security.
+The currently deployed version predates the local authentication changes described
+below. After review and deployment, live session access requires Supabase Auth and
+an owner check in Railway PostgreSQL. Use authorized demo data and supervised access;
+this is still a prototype, not production security.
 
 ## Current deployed environment
 
@@ -29,6 +30,10 @@ A live smoke test verified equipment confirmation, same-session follow-up, and t
 Public backend endpoints can consume provider credits. **CORS is not authentication**:
 direct HTTP clients can bypass browser origin checks. Never put a secret token or API
 key in Vite / `VITE_*` variables; all provider credentials stay on the backend.
+
+The authenticated version requires login for session APIs and `/search`. Signup
+still permits new users to consume the shared demo budget: login is not a spending
+limit. Keep the existing rate limits and provider budget controls in place.
 
 Set `APP_ENV=production` on Railway (also the Docker/cloud-launcher default). This:
 
@@ -54,8 +59,10 @@ Optional backend variables: `DEMO_REQUESTS_PER_MINUTE=120`,
 `DEMO_WRITES_PER_HOUR=60`, `DEMO_PROVIDER_ACTIONS_PER_HOUR=8`,
 `DEMO_UPLOAD_QUOTA_BYTES=268435456`. Run **one replica and one Uvicorn worker**;
 the launcher pins one worker. Counters are in memory and reset on restart. They are
-only prototype safeguards: an attacker can exhaust the shared budget, access a known
-session ID, or consume credits within the limits. Do not store sensitive demo data.
+only prototype safeguards: an attacker can exhaust the shared budget or an authenticated
+user can consume credits within the limits. The old deployed version also allows access
+by known session ID; the reviewed authenticated version rejects other users regardless
+of UUID knowledge. Do not store sensitive demo data.
 The upload quota does not bound database growth, logs or model-cache size.
 
 Use a restricted, low-budget provider project/key if possible, with provider-side
@@ -201,9 +208,9 @@ SSH; private database hostnames generally will not resolve on your laptop.
 
 1. Import the same GitHub repository and reviewed branch when available.
 2. Set Root Directory to `frontend`, framework Vite, install `npm ci`, build
-   `npm run build`, output `dist`. Use a supported Node version compatible with Vite 8.
+   `npm run build:hosted`, output `dist`. Use a supported Node version compatible with Vite 8.
 3. Set `VITE_API_BASE_URL` to the backend public HTTPS origin, without `/api`.
-   This variable is public. Never put database URLs or API keys in `VITE_*` values.
+   This variable is public. Never put database URLs or private API keys in `VITE_*` values.
    Keep `VITE_DEMO_MODE=false` for live mode.
 4. Deploy when authorized. `frontend/vercel.json` provides SPA fallback. API requests
    and image URLs go directly to Railway, not through a Vercel function. See the
@@ -216,6 +223,69 @@ SSH; private database hostnames generally will not resolve on your laptop.
 An empty frontend base preserves local `/api` requests through Vite's proxy to
 `BACKEND_URL` or `http://127.0.0.1:8000`. That proxy is absent on static Vercel hosting;
 set the cloud base URL explicitly. No Railway hostname is hard-coded in source.
+
+### Required Vercel build variables and scope
+
+Vite embeds `VITE_*` values at **build time**. Railway variables and Vercel
+Development variables do not populate a Preview build. Configure these four names
+in Vercel Project Settings → Environment Variables, separately for each target:
+
+| Variable | Production | Preview (all non-production branches) |
+| --- | --- | --- |
+| `VITE_SUPABASE_URL` | Production Supabase project HTTPS URL | Preview's selected Supabase project HTTPS URL |
+| `VITE_SUPABASE_ANON_KEY` | That project's public publishable/anon key | The matching project's public publishable/anon key |
+| `VITE_API_BASE_URL` | Production Railway backend HTTPS origin, no `/api` | Compatible preview backend HTTPS origin, no `/api` |
+| `VITE_DEMO_MODE` | `false` | `false` |
+
+The configured Supabase project URL is `https://kodylgzaqdyaptrdfidn.supabase.co`.
+If sharing this auth project, use its public publishable key in both scopes.
+Never use a Supabase service-role/secret key, provider key or database URL in Vite.
+The documented production backend is `https://fieldtrace-production.up.railway.app`;
+this does **not** establish that its older code/schema supports the current feature branch.
+Use an isolated compatible backend for preview until that compatibility is verified.
+
+For **branch-specific Preview overrides**, select Preview and the exact branch
+`feat/scanned-manua-l-ocr-coverage`. Overrides take precedence over general Preview
+values. Check all four variables for stale/blank overrides; remove obsolete overrides
+or replace them with matching project/backend values. Keep general Preview defaults
+for future branches. Do not change Production values to fix a Preview deployment.
+
+Keep Root Directory `frontend`, framework Vite and the repository build command
+`npm run build:hosted`. The checked-in `frontend/vercel.json` selects it. Remove
+conflicting dashboard build-command overrides. The hosted check rejects missing live
+auth/API configuration and known private Supabase key formats; it prints names and
+guidance, never values. It does not verify key validity, CORS or backend compatibility.
+`npm run build` remains available locally with the Vite `/api` proxy; it also enforces
+the hosted check when `VERCEL=1`. Run `npm run build:hosted` locally to validate
+hosted configuration from the effective production-mode Vite environment files/variables.
+
+Demo mode defaults to false. Only explicit `VITE_DEMO_MODE=true` makes an entire
+build replay-only; do not use that to bypass failed live configuration. The intentional
+`/?demo=true` labeled public replay remains available without live API/provider calls.
+Missing live configuration never redirects users into replay.
+
+After changing values, create a **new Preview build** of the correct branch/commit.
+Existing static deployments retain their previous values. Confirm the deployment's
+branch, commit and environment before testing; a Preview build does not update the
+older Production deployment from main. See [Vercel environment scopes](https://vercel.com/docs/environment-variables)
+and [environment management](https://vercel.com/docs/environment-variables/manage-across-environments).
+
+### Preview backend and auth checklist
+
+- The target Railway backend needs compatible auth/session/OCR code and the additive
+  migrations documented below. Frontend configuration cannot upgrade backend code
+  or schema. Do not migrate or replace production merely to enable a preview.
+- On that backend, `SUPABASE_URL` must match the frontend project and
+  `SUPABASE_JWT_AUDIENCE=authenticated`. No service-role key is required.
+- Add the exact Preview origin to that backend's `CORS_ALLOWED_ORIGINS`, preserving
+  existing authorized origins. No wildcard; CORS is not authentication.
+- In Supabase Auth URL Configuration, retain the production Site URL and add the
+  intended preview origin as an allowed redirect URL (signup uses the current origin).
+  Preserve localhost redirects for local development. Do not disable confirmation.
+- Test signup/login, My Sessions, reopen and confirmation on the preview. Verify
+  the browser's API requests target the intended backend. Do not expose tokens in logs.
+- Production remains unchanged until a separate reviewed release is authorized.
+
 
 ## Part C — Verification after authorized deployment
 
@@ -249,3 +319,216 @@ vision use paid calls, so repeat these checks only when needed.
 
 Local secrets stay ignored by Git and excluded by the Docker context allowlist.
 The repository scanner is heuristic review, not proof of absence of secrets.
+
+
+## Authentication and saved sessions (pending review; not deployed)
+
+Supabase manages accounts, passwords, email confirmation, refresh and logout only.
+All FieldTrace sessions, equipment, photos, findings, runs and vectors stay in Railway.
+No Supabase application tables, database migration to Supabase, or service-role key
+are needed. The browser uses the official Supabase SDK. FastAPI verifies ES256/RS256
+JWT signatures against the project's fixed JWKS endpoint, issuer, `authenticated`
+audience, expiry, issued-at, user UUID and authenticated role. Anonymous Supabase
+users and legacy HS256 signing keys are not supported by this implementation.
+
+Supabase documents the [public signing-key endpoint](https://supabase.com/docs/guides/auth/signing-keys).
+Choose an asymmetric signing key in the Supabase project before configuring this release.
+
+### Configuration after approval
+
+1. Create/select a Supabase project, enable email/password sign-in, and configure
+   email confirmation and the Site URL/allowed redirect URLs for the production
+   Vercel origin and your local development origin. Test email delivery explicitly.
+2. Backend Railway variables: `SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co`
+   and `SUPABASE_JWT_AUDIENCE=authenticated` (default). The backend needs only public
+   signing keys, not the anon key, JWT signing secret or service-role key.
+3. Frontend build variables: `VITE_SUPABASE_URL` with the same URL and
+   `VITE_SUPABASE_ANON_KEY` with a **public publishable key or legacy anon key**.
+   Keep `VITE_API_BASE_URL` and `VITE_DEMO_MODE=false`. Never use a service-role or
+   secret key as this value. Rebuild Vercel after changing public configuration.
+4. Keep the exact production frontend origin in `CORS_ALLOWED_ORIGINS`. CORS now
+   permits the Authorization header and PATCH; it still does not authenticate users.
+5. Keep provider keys, DATABASE_URL and filesystem configuration on Railway only.
+
+Missing auth configuration fails closed. The login screen explains unavailable
+configuration and offers the public recorded demo at `/?demo=true`. This path is
+explicitly labeled and does not call live session, OCR, vision or reasoning APIs.
+
+### Additive database migration
+
+Back up the database before the approved release. **Do not reset it or re-ingest.**
+The migration adds nullable `owner_user_id` (UUID) and `session_name` (text) to
+`equipment_sessions`, a name constraint, an owner/updated-at index, and child-table
+triggers that update the existing parent timestamp after changes. No existing rows
+are deleted. Existing ownerless sessions remain stored but cannot be accessed or
+claimed through authenticated endpoints. Any future legacy ownership assignment
+requires a separate, audited administrative decision; this release adds no claim API.
+
+For the existing Railway database, apply the migration from the **new reviewed
+image**, before routing traffic to the authenticated backend. After deployment is
+approved, configure this as a Railway pre-deploy command for that release:
+
+```sh
+PYTHONPATH=backend python -m app.db.migrate_user_sessions
+```
+
+It is transactional, uses an advisory lock and is safe to rerun. It must run on
+Railway, where the private DATABASE_URL resolves. Do not use `railway run` expecting
+remote execution. For a brand-new empty database, first initialize the existing
+Step 1–4 tables with the existing setup, then apply the migration before use.
+
+Local PowerShell (after initializing the existing tables):
+
+```powershell
+$env:PYTHONPATH='backend'
+.\.venv\Scripts\python.exe -m app.db.migrate_user_sessions
+```
+
+Release order after review: back up → apply additive migration → deploy authenticated
+backend → deploy configured frontend → test two separate users, email confirmation,
+private photo/citation access, session history and follow-up. There may be a brief
+login-required window for old clients; no live infrastructure was changed during
+implementation. Do not roll back to an unauthenticated backend once private sessions
+exist, because the old UUID-only routes would expose them.
+
+### Session API and limitations
+
+- `POST /sessions` requires `{ "session_name": "ACS880 Fault 5091" }`; verified JWT
+  identity sets the owner. Extra ownership fields are rejected.
+- `GET /sessions?limit=50&offset=0` lists only your sessions, most recently updated
+  first (maximum page size 100).
+- `GET /sessions/{id}` returns owned metadata; `PATCH /sessions/{id}` renames it.
+- Every existing child route requires the same owner check, including image bytes,
+  visual context, source excerpts, troubleshooting runs and follow-ups. Missing and
+  foreign IDs both return 404. `/health` remains public; production audit restrictions
+  and upload/path limits still apply.
+
+Names are trimmed, 1–100 characters; duplicate names are allowed. The name dialog
+creates nothing until confirmed. Cancelling or failure preserves drafts. Lazy creation
+is shared by concurrent actions. An explicit new case resets drafts only after success.
+My Sessions reopens saved state using GETs only; it does not repeat paid analysis.
+Photo bytes are fetched with Authorization and displayed through temporary object URLs,
+which are revoked on unmount. Tokens are never put in image URLs or application logs.
+
+The Supabase SDK stores browser auth state to restore sessions; XSS or a compromised
+browser can steal it. Keep dependencies reviewed and use trusted devices. Logout clears
+local auth/workspace, but an already issued bearer JWT can remain valid until expiry;
+local JWKS verification does not provide immediate revocation. Set a suitably short
+access-token lifetime in Supabase. Password reset and account administration remain
+Supabase-managed and are not added as FieldTrace product features here. No real
+Supabase account/email flow was exercised by mocked automated tests; verify it before
+production release. The global single-instance rate limiter remains shared by all users.
+
+For exact Supabase URLs, email settings and the real two-user validation procedure,
+see [Supabase readiness review](SUPABASE-READINESS.md).
+
+### Deleting private sessions
+
+`DELETE /sessions/{session_id}` authenticates and locks an owner-scoped SQL row.
+The transaction deletes the parent and uses existing foreign-key cascades for images,
+findings, troubleshooting state and runs. Measurements, checks, follow-ups, retrieved
+history and citations are JSON in those rows; shared manuals/chunks/catalog stay intact.
+No schema migration or provider call is required for deletion.
+
+Only after commit, recorded UUID image files directly under `UPLOAD_ROOT/{session_id}`
+are unlinked. Missing files are harmless. Traversal, redirected paths and unexpected
+filenames are skipped. No recursive directory deletion is used. Database failure leaves
+files untouched. If file cleanup fails, the API still reports successful database
+deletion with `file_cleanup_pending=true`; the UI warns and server logs identify the
+session UUID for administrator cleanup. Such leftover files are inaccessible through
+session APIs but remain on disk until an administrator removes them. No automatic retry
+queue is implemented. Empty session directories may remain. Upload storage must be
+server-controlled; concurrent hostile filesystem mutation is outside this prototype's
+threat model. Existing upload transactions lock the same parent row before writing.
+
+### Saving workspace drafts
+
+The active named session exposes GET/PUT `/sessions/{session_id}/draft`, guarded by
+verified ownership and a parent-row lock. The bounded, extra-field-forbidding payload
+contains model text, symptom text, follow-up text, entry type and partial measurement
+fields. It is a replaceable `workspace_draft` in the existing troubleshooting inputs
+JSON, so this feature needs no schema migration. GET falls back to existing entered
+model text and the latest submitted symptom for sessions without a saved draft.
+
+Typing debounces silently for 850 ms; Save flushes immediately. Writes are serialized and bound
+to the captured session ID; leaving/switching cases waits for pending draft saves.
+Logout/unmount cancels pending timers, and completed requests cannot update another
+account's UI. Use manual Save and wait for Saved successfully before logging out or closing the
+page; unsent edits are not durable. Simultaneous edits in separate browser tabs use last-write-wins semantics.
+Failed saves retain on-screen text and offer manual retry. No new session is created.
+
+Draft saves do not append partial symptoms/checks, alter equipment confirmation,
+increment the reasoning input revision, or invalidate results. Retrieval fingerprints
+exclude workspace drafts. Run/Submit update still submits the completed input through
+existing endpoints; merely saving a draft never invokes providers or retrieval.
+Already-submitted notes/checks/measurements and history remain untouched. Rename saves
+the name separately; uploaded photos are already durable and are not re-uploaded by
+auto-save. Manual Save also uploads queued photos and notes, one file per request,
+without OCR, analysis or troubleshooting. Acknowledged uploads leave the queue and
+are not retried; failed files remain queued. Session switching is blocked during
+manual Save, and logout stops subsequent queued uploads. Successful manual feedback
+clears after 2.5 seconds; failed saves retain drafts and show a retry message.
+
+### Photo persistence and removal
+
+The browser hashes original file bytes with SHA-256 to skip duplicates in the active
+session queue or saved list. The backend independently computes the hash, locks the
+session and enforces a unique `(session_id, content_sha256)` index. Retrying after a
+lost response reuses the existing image ID and file, without overwriting its note or
+analysis. Identical filenames with different bytes remain separate photos. Hashes
+are exposed only through owner-authorized session endpoints, never a global lookup.
+
+The additive, repeatable migration is `PYTHONPATH=backend python -m
+app.db.migrate_image_fingerprints` (PowerShell: set `$env:PYTHONPATH='backend'`, then
+run `python -m app.db.migrate_image_fingerprints`). Existing vision initialization
+also invokes it. Run this against the intended database before serving the updated
+application; no production migration has been performed as part of local work.
+The nullable column preserves all legacy images, including existing duplicates.
+Legacy hashes are read from contained original files and assigned lazily on upload;
+existing duplicate copies remain available for explicit user removal.
+
+Saved photos show **Saved · Not analyzed**, with explicit Inspect / Analyze and
+Remove actions. Saving does not run providers. Owner-only DELETE
+`/sessions/{session_id}/images/{image_id}` removes the image record and its findings,
+rebuilds aggregates from remaining photos, and invalidates the current troubleshooting
+result. Historical run snapshots remain historical. Shared manuals are untouched.
+After the database transaction commits, cleanup unlinks only the recorded UUID file
+inside the session directory; redirected/outside paths are refused. Missing files
+are harmless. Partial cleanup returns `file_cleanup_pending` and a UI warning;
+an administrator must review residual files (there is no background cleanup retry).
+
+### Limited-evidence equipment identification
+
+Model text is optional. Identification uses selected queued/saved photos, cached local
+OCR, and (when there is no strong exact nameplate) one multi-photo identity extraction
+request through the configured `VISION_PROVIDER` adapter. Existing OpenAI/Gemini model
+and key settings apply. The frontend explicitly sends `use_visual=true`; API clients
+can omit this flag for OCR-only identification. Identification now counts against the
+production provider-call budget. Saving, reopening, and changing photo selection do
+not call a provider. No credentials are added to browser configuration.
+
+The visual request returns observed text/features and provisional identity candidates,
+separately from visible-abnormality analysis. Deterministic catalog matching chooses
+exact observed type, supported model, family, manufacturer, or insufficient evidence.
+Strong readable nameplate text takes precedence over partial text, typed identity and
+appearance. Symptoms are never identity inputs. Appearance alone cannot confirm a
+subtype or invent a full type code; family-only cards ask for readable model evidence
+before model-filtered troubleshooting. HIGH/MEDIUM/LOW are ordinal evidence labels.
+A strong nameplate remains HIGH even when weaker typed text conflicts; the conflict
+is still shown for explicit technician review. A full observed SKU is not catalog-validated.
+
+Up to 30 selected photos are fused in one request. Byte-identical inputs are counted
+once. OCR is reused by content hash and role; validated visual observations are reused
+for the same ordered image hashes. Failure leaves readable OCR available with a visible
+unavailability notice, never fabricated identity evidence. Visual recognition remains
+fallible; mocked tests establish contracts, not real-photo identification accuracy.
+
+Before running updated code against an existing database, apply the repeatable additive
+migration: `PYTHONPATH=backend python -m app.db.migrate_identification_evidence`.
+PowerShell: `$env:PYTHONPATH='backend'; python -m app.db.migrate_identification_evidence`.
+Startup initializers also apply it. It adds `equipment_sessions.identification_evidence`
+(JSONB) and nullable `session_images.use_for_identification`. No rows are removed.
+Legacy nameplates default to selected; other legacy views can be selected explicitly.
+New queued photos default to selected, and saving persists that choice. Owner-only
+PATCH `/sessions/{session_id}/images/{image_id}/identification` changes selection without
+uploading or analyzing the photo. Existing catalog entries and shared corpus are unchanged.

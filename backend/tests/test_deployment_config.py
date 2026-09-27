@@ -55,8 +55,8 @@ def test_app_cors_allows_only_configured_origin_without_starting_database(monkey
     probe = FastAPI()
     probe.user_middleware = list(main.app.user_middleware)
     client = TestClient(probe)
-    headers = {'Origin': 'https://frontend.example.test', 'Access-Control-Request-Method': 'POST',
-               'Access-Control-Request-Headers': 'content-type'}
+    headers = {'Origin': 'https://frontend.example.test', 'Access-Control-Request-Method': 'PATCH',
+               'Access-Control-Request-Headers': 'content-type,authorization'}
     try:
         allowed = client.options('/sessions', headers=headers)
         assert allowed.status_code == 200

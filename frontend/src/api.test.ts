@@ -24,7 +24,7 @@ it('uses the local proxy when the public base is empty',()=>{
 })
 it('uses a configured base for requests and saved-photo URLs',async()=>{
   vi.stubEnv('VITE_API_BASE_URL','https://backend.example.test///')
-  const fetcher=vi.fn().mockResolvedValue(new Response('{}'))
+  const fetcher=vi.fn().mockResolvedValue(new Response('[]'))
   vi.stubGlobal('fetch',fetcher)
   await request('/sessions')
   expect(fetcher).toHaveBeenCalledWith('https://backend.example.test/sessions',expect.any(Object))

@@ -75,7 +75,7 @@ def chunk_pages(pages: list[Page], token_count=None, max_tokens=200):
             nonlocal pending, refs, notes, headings_only
             if pending and not headings_only:
                 chunks.append(Chunk(page.document_id, page.page_number, section, kind, len(chunks),
-                                    "\n\n".join(pending), list(refs), list(safety), list(notes)))
+                                    "\n\n".join(pending), list(refs), list(safety), list(dict.fromkeys(page.warnings + notes))))
             pending, refs, notes = [], [], []
             headings_only = True
 

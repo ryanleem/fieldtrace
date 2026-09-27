@@ -64,7 +64,7 @@ def inspection_db(isolated_db, tmp_path):
 
 
 def upload(engine, settings, sid, **kwargs):
-    return service.upload_images(engine, sid, [dict(data=photo(), original_filename='../../name.png', **kwargs)], settings)[0]
+    return service.upload_images(engine, sid, [dict(data=photo()+kwargs.pop('extra_bytes', b''), original_filename='../../name.png', **kwargs)], settings)[0]
 
 
 def test_normalization_and_no_invented_box():
@@ -140,7 +140,7 @@ def test_upload_metadata_limits_and_atomicity(inspection_db):
     assert len(service.list_images(engine, sid)) == 1
     settings.max_inspection_images = 1
     with pytest.raises(ValueError):
-        upload(engine, settings, sid)
+        upload(engine, settings, sid, extra_bytes=b'different')
     assert len(list(settings.uploads_dir.rglob('*.png'))) == 1
 
 
@@ -149,7 +149,7 @@ def test_analysis_raw_notes_confirmation_and_multi_view(inspection_db):
     engine, settings, sid, _ = inspection_db
     before = equipment.get_state(engine, sid)
     one = upload(engine, settings, sid, view_label='front', user_note='I hear noise here')
-    two = upload(engine, settings, sid, view_label='close_up')
+    two = upload(engine, settings, sid, view_label='close_up', extra_bytes=b'other angle')
     provider = MockVision()
     result = service.analyze_all(engine, sid, provider, settings)
     assert len(result['aggregated_visual_findings']) == 1
@@ -161,7 +161,8 @@ def test_analysis_raw_notes_confirmation_and_multi_view(inspection_db):
     assert all('noise' not in f['description'] and f['bounding_region'] is None for f in state['normalized_visual_findings'])
     assert service.analyze_all(engine, sid, provider, settings)['results'] == []
     service.analyze_image(engine, sid, one['id'], provider, settings)
-    assert len(provider.calls) == 2  # successful repeat is idempotent
+    assert len(provider.calls) == 3  # explicit inspection runs again
+    assert len(service.visual_state(engine, sid)['normalized_visual_findings']) == 2
 
 
 @pytest.mark.integration
@@ -210,9 +211,11 @@ def test_api_upload_analyze_get_and_bad_metadata(inspection_db, monkeypatch):
     monkeypatch.setattr(inspection, 'get_settings', lambda: settings)
     app = FastAPI()
     app.include_router(inspection.router)
+    from conftest import authenticated_client
+    authenticated_client(app, monkeypatch, engine, sid)
     app.dependency_overrides[get_vision_provider] = lambda: MockVision()
     with TestClient(app) as client:
-        files = [('images', ('front.png', photo(), 'image/png')), ('images', ('detail.png', photo(), 'image/png'))]
+        files = [('images', ('front.png', photo(), 'image/png')), ('images', ('detail.png', photo()+b'detail', 'image/png'))]
         response = client.post(f'/sessions/{sid}/images', files=files,
                                data={'view_labels': '["front","close_up"]', 'user_notes': '[null,"Noise here"]'})
         assert response.status_code == 201, response.text
@@ -267,7 +270,7 @@ def test_unconfirmed_images_and_later_confirmation(inspection_db):
     equipment.confirm(engine, sid, ConfirmEquipment(equipment_id='abb-acs880-01'))
     assert build_visual_retrieval_context(sid, engine)['visual_findings'] == []
     # Pending unconfirmed uploads can acquire the current confirmation at analysis.
-    second = upload(engine, settings, sid)
+    second = upload(engine, settings, sid, extra_bytes=b'confirmed view')
     service.analyze_image(engine, sid, second['id'], provider, settings)
     assert len(build_visual_retrieval_context(sid, engine)['visual_findings']) == 1
 
@@ -343,3 +346,47 @@ def test_visual_context_reaches_real_abb_corpus(tmp_path):
     finally:
         with Session(engine) as db, db.begin():
             db.delete(db.get(EquipmentSession, sid))
+
+
+@pytest.mark.integration
+def test_reanalysis_replaces_findings_and_aggregates_even_on_failure(inspection_db):
+    engine, settings, sid, _ = inspection_db
+    one = upload(engine, settings, sid)
+    two = upload(engine, settings, sid, extra_bytes=b'other')
+    service.analyze_all(engine, sid, MockVision(), settings)
+    changed = dict(finding(), issue_type='abrasion', description='Visible surface abrasion.')
+    result = service.analyze_image(engine, sid, one['id'], MockVision([changed]), settings)
+    assert [f['issue_type'] for f in result['findings']] == ['abrasion']
+    state = service.visual_state(engine, sid, True)
+    assert len(state['normalized_visual_findings']) == 2
+    assert len(state['aggregated_visual_findings']) == 2
+    assert len(state['uploaded_images'][0]['raw_vision_results']) == 2
+    result = service.analyze_image(engine, sid, one['id'], MockVision([]), settings)
+    assert result['image']['analysis_status'] == 'no_clear_abnormality'
+    assert result['findings'] == []
+    service.analyze_image(engine, sid, one['id'], MockVision(), settings)
+    result = service.analyze_image(engine, sid, one['id'], MockVision(malformed=True), settings)
+    assert result['image']['analysis_status'] == 'failed'
+    assert result['findings'] == [] and result['image']['image_summary'] is None
+    state = service.visual_state(engine, sid)
+    assert [f['image_id'] for f in state['normalized_visual_findings']] == [two['id']]
+    assert state['aggregated_visual_findings'][0]['supporting_image_ids'] == [str(two['id'])]
+    assert service.analyze_image(engine, sid, one['id'], MockVision(), settings)['image']['analysis_status'] == 'completed'
+
+
+@pytest.mark.integration
+def test_reanalysis_lease_and_equipment_mismatch_keep_previous_findings(inspection_db):
+    engine, settings, sid, _ = inspection_db
+    record = upload(engine, settings, sid)
+    def concurrent():
+        with pytest.raises(equipment.StaleIdentification, match='already running'):
+            service.analyze_image(engine, sid, record['id'], MockVision(), settings)
+    provider = MockVision(callback=concurrent)
+    service.analyze_image(engine, sid, record['id'], provider, settings)
+    assert len(provider.calls) == 1
+    equipment.identify(engine, sid, 'ACS580-01', [], None)
+    equipment.confirm(engine, sid, ConfirmEquipment(equipment_id='abb-acs580-01'))
+    with pytest.raises(equipment.StaleIdentification, match='previous equipment'):
+        service.analyze_image(engine, sid, record['id'], provider, settings)
+    assert len(provider.calls) == 1
+    assert len(service.visual_state(engine, sid)['normalized_visual_findings']) == 1

@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
     app_env: Literal['development', 'production'] = 'development'
+    supabase_url: str = ''
+    supabase_jwt_audience: str = 'authenticated'
     demo_requests_per_minute: int = Field(120, ge=1, le=1000)
     demo_writes_per_hour: int = Field(60, ge=1, le=1000)
     demo_provider_actions_per_hour: int = Field(8, ge=1, le=100)
@@ -44,6 +46,7 @@ class Settings(BaseSettings):
     semantic_top_n: int = Field(20, ge=1, le=500)
     keyword_top_n: int = Field(20, ge=1, le=500)
     hybrid_top_k: int = Field(10, ge=1, le=100)
+    document_ocr_enabled: bool = False
     manuals_dir: Path = ROOT / "data/manuals"
     processed_dir: Path = ROOT / "data/processed"
     model_cache: Path = ROOT / ".cache/models"

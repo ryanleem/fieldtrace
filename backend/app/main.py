@@ -36,8 +36,8 @@ app = FastAPI(title="ABB Guardian: Grounded Troubleshooting", version="0.4.0", l
               openapi_url=None if production else '/openapi.json')
 configure_safety(app, settings)
 app.add_middleware(CORSMiddleware, allow_origins=get_settings().cors_origins,
-                   allow_credentials=False, allow_methods=['GET', 'POST', 'PUT', 'DELETE'],
-                   allow_headers=['Content-Type'])
+                   allow_credentials=False, allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+                   allow_headers=['Content-Type', 'Authorization'])
 if not production:
     app.include_router(documents_router)
 app.include_router(search_router)
