@@ -16,7 +16,10 @@ export async function request<T>(path:string,options:RequestInit={}):Promise<T>{
     if(!response.ok){
       const body=await response.json().catch(()=>null)
       const detail=typeof body?.detail==='string'?body.detail:null
-      throw new ApiError(response.status===401?'Your sign-in has expired. Log out and log in again.':response.status===404?'Session or resource is unavailable for this account.':response.status===429?'Service rate limit reached. Please wait and retry.':
+      const retrySeconds=Number(response.headers.get('Retry-After'))
+      const wait=Number.isFinite(retrySeconds)&&retrySeconds>0&&retrySeconds<=3600?Math.ceil(retrySeconds/60):0
+      const rateMessage=wait?`Service rate limit reached. Please wait ${wait} minute${wait===1?'':'s'} before retrying.`:'Service rate limit reached. Please wait and retry.'
+      throw new ApiError(response.status===401?'Your sign-in has expired. Log out and log in again.':response.status===404?'Session or resource is unavailable for this account.':response.status===429?rateMessage:
         response.status>=500?'The service is temporarily unavailable. Refresh session status before retrying.':
         detail||`Request could not be completed (${response.status}).`,response.status)
     }

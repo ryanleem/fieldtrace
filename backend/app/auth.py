@@ -40,10 +40,13 @@ def verify_token(token: str, settings) -> UUID:
         raise HTTPException(401, 'Invalid or expired sign-in', headers={'WWW-Authenticate': 'Bearer'}) from None
 
 
-def require_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> UUID:
+def require_user(request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> UUID:
     if credentials is None or credentials.scheme.lower() != 'bearer':
         raise HTTPException(401, 'Sign in to continue', headers={'WWW-Authenticate': 'Bearer'})
-    return verify_token(credentials.credentials, get_settings())
+    # This ASGI scope entry is set only by the production guard after full JWT
+    # verification. It is never populated from caller-supplied IDs or headers.
+    verified = request.scope.get('fieldtrace.verified_user')
+    return verified if isinstance(verified, UUID) else verify_token(credentials.credentials, get_settings())
 
 
 def session_access(request: Request, response: Response, user_id: UUID = Depends(require_user)):
