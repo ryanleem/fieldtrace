@@ -190,13 +190,15 @@ Implemented:
 - citation-backed retrieval
 - nameplate/OCR equipment identification
 - equipment confirmation with persisted reopen/refresh state
-- multi-photo visible issue analysis
+- multi-photo visible issue analysis with explicit per-photo re-analysis
+- visual findings label the supporting uploaded photo as evidence
 - troubleshooting session state
 - evidence review
 - technical claim verification
 - High / Medium / Low confidence
 - follow-up troubleshooting
 - exact source viewer
+- relevant ABB passages remain reviewable on low-evidence results without being presented as proof of a diagnosis
 - technician-facing React UI
 
 Current equipment identification catalog:
@@ -298,9 +300,9 @@ npm run test:e2e
 ```
 
 Latest validation on the current integration branch:
-- **265 backend integration/corpus tests passed**
-- **31 frontend unit tests passed**
-- **55 browser tests passed** for the confirmation-state regression build
+- **273 backend/integration/corpus/coverage tests passed**
+- **42 frontend unit tests passed**
+- **62 browser tests reported passing**; the local Playwright runner hung during shutdown and was interrupted after the tests completed
 - frontend production build passed
 - `git diff --check` passed
 
