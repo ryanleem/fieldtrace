@@ -2,6 +2,12 @@
 
 FieldTrace is our ABB Accelerator prototype for **multimodal industrial troubleshooting**.
 
+## Open FieldTrace
+
+**Live site:** https://fieldtrace-blush.vercel.app
+
+> The live production site currently reflects the deployed production backend. The newest authentication, saved-session, OCR/manual-coverage, and equipment-confirmation fixes are on `feat/scanned-manua-l-ocr-coverage` until they are deployed and merged.
+
 A technician can:
 1. upload equipment/nameplate photos,
 2. confirm the equipment model,
@@ -50,6 +56,8 @@ For optional scanned-manual OCR and the indexed-manual preflight, see
 
 ## Start here if you are a teammate
 
+The current integration branch is **`feat/scanned-manua-l-ocr-coverage`**. Start from that branch for new work until the pending changes are merged to `main`.
+
 You do **not** need Ryan's local files. Everything needed to collaborate is in this private repository, except:
 - API keys,
 - local database data,
@@ -67,10 +75,11 @@ cd fieldtrace
 
 ### 2. Create your own branch
 
-Do not work directly on `main`.
+Do not work directly on `main` or the shared integration branch. Base new work on the current integration branch:
 
 ```powershell
-git checkout main
+git fetch origin
+git switch feat/scanned-manua-l-ocr-coverage
 git pull
 git checkout -b your-branch-name
 ```
@@ -175,10 +184,12 @@ http://127.0.0.1:5173
 
 Implemented:
 - ABB manual ingestion
+- optional OCR for image-only/scanned manual pages
+- indexed-manual coverage preflight before troubleshooting
 - semantic + keyword hybrid search
 - citation-backed retrieval
 - nameplate/OCR equipment identification
-- equipment confirmation
+- equipment confirmation with persisted reopen/refresh state
 - multi-photo visible issue analysis
 - troubleshooting session state
 - evidence review
@@ -286,10 +297,14 @@ npm test
 npm run test:e2e
 ```
 
-Latest validated baseline:
-- **174 backend tests**
-- **6 frontend unit tests**
-- **21 browser tests**
+Latest validation on the current integration branch:
+- **265 backend integration/corpus tests passed**
+- **31 frontend unit tests passed**
+- **55 browser tests passed** for the confirmation-state regression build
+- frontend production build passed
+- `git diff --check` passed
+
+The backend corpus run used the real local ABB corpus: **2 manuals, 736 pages, 11,085 chunks**.
 
 ## Before you commit
 
