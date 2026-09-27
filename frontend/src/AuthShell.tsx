@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react'
 import type {Session} from '@supabase/supabase-js'
-import {supabase} from './auth'
+import {supabase,configurationErrors} from './auth'
 import App from './WorkspaceBoundary'
 
 export const replayMode=import.meta.env.VITE_DEMO_MODE==='true'||new URLSearchParams(window.location.search).get('demo')==='true'
@@ -40,13 +40,13 @@ export default function AuthShell(){
     finally{setBusy(false)}
   }
   if(replayMode)return <App demo userId="replay"/>
-  if(loading)return <main><p role="status">Restoring sign-in…</p></main>
+  if(loading)return <main><p role="status">Restoring sign-inâ€¦</p></main>
   if(session)return <><App key={session.user.id} userId={session.user.id} account={<><span>{session.user.email}</span><button disabled={busy} onClick={()=>void logout()}>Log out</button></>}/>{error&&<p role="alert">{error}</p>}</>
   return <main className="auth-page"><a className="brand" href="/">FieldTrace</a><p className="eyebrow">MAINTENANCE INTELLIGENCE</p><h1>{signup?'Create your account':'Log in to FieldTrace'}</h1><p>Save your equipment investigations and continue with cited ABB evidence.</p>
-    {!supabase?<p role="alert">Live sign-in is not configured. The recorded demo is still available.</p>:<form className="panel" onSubmit={submit}>
+    {!supabase?<p role="alert">Live sign-in is not configured for this deployment. {configurationErrors.join(' ')} Ask the deployment owner to set these build variables in the correct Vercel environment and rebuild. The labeled recorded demo remains available through the link below.</p>:<form className="panel" onSubmit={submit}>
       <label>Email<input type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label>
       <label>Password<input type="password" autoComplete={signup?'new-password':'current-password'} required minLength={8} value={password} onChange={e=>setPassword(e.target.value)}/></label>
-      <button className="primary" disabled={busy}>{busy?'Please wait…':signup?'Sign up':'Log in'}</button>
+      <button className="primary" disabled={busy}>{busy?'Please waitâ€¦':signup?'Sign up':'Log in'}</button>
       <button type="button" className="text-button" disabled={busy} onClick={()=>{setSignup(!signup);setError('');setNotice('')}}>{signup?'Already registered? Log in':'Create an account'}</button>
     </form>}{error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}<a href="/?demo=true">View the labeled recorded demo</a>
   </main>

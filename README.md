@@ -346,3 +346,17 @@ Detailed implementation notes:
 
 See [Vercel + Railway deployment](docs/DEPLOYMENT.md) for the deployed architecture,
 public-demo safeguards, persistent uploads and corpus setup. The local setup above is unchanged.
+
+For **both Vercel Production and Preview**, set these build variables separately:
+
+- `VITE_SUPABASE_URL` — Supabase project HTTPS URL.
+- `VITE_SUPABASE_ANON_KEY` — matching public publishable/anon key; never a service-role key.
+- `VITE_API_BASE_URL` — compatible Railway backend HTTPS origin, without `/api`.
+- `VITE_DEMO_MODE=false` — live mode; labeled replay remains at `/?demo=true`.
+
+Preview variables may also have branch-specific overrides; check those for
+`feat/scanned-manua-l-ocr-coverage`. Production settings do not fill Preview settings.
+Vercel uses `npm run build:hosted` to reject incomplete live configuration. Rebuild
+the intended preview after changing variables; an existing bundle does not update.
+Use a compatible preview backend and authorize its frontend origin in Railway CORS
+and Supabase redirect settings. See the deployment guide for scope and compatibility checks.

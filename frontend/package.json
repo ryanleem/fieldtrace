@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:hosted": "tsc -b && node scripts/build-hosted.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.1",

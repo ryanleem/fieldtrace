@@ -208,9 +208,9 @@ SSH; private database hostnames generally will not resolve on your laptop.
 
 1. Import the same GitHub repository and reviewed branch when available.
 2. Set Root Directory to `frontend`, framework Vite, install `npm ci`, build
-   `npm run build`, output `dist`. Use a supported Node version compatible with Vite 8.
+   `npm run build:hosted`, output `dist`. Use a supported Node version compatible with Vite 8.
 3. Set `VITE_API_BASE_URL` to the backend public HTTPS origin, without `/api`.
-   This variable is public. Never put database URLs or API keys in `VITE_*` values.
+   This variable is public. Never put database URLs or private API keys in `VITE_*` values.
    Keep `VITE_DEMO_MODE=false` for live mode.
 4. Deploy when authorized. `frontend/vercel.json` provides SPA fallback. API requests
    and image URLs go directly to Railway, not through a Vercel function. See the
@@ -223,6 +223,69 @@ SSH; private database hostnames generally will not resolve on your laptop.
 An empty frontend base preserves local `/api` requests through Vite's proxy to
 `BACKEND_URL` or `http://127.0.0.1:8000`. That proxy is absent on static Vercel hosting;
 set the cloud base URL explicitly. No Railway hostname is hard-coded in source.
+
+### Required Vercel build variables and scope
+
+Vite embeds `VITE_*` values at **build time**. Railway variables and Vercel
+Development variables do not populate a Preview build. Configure these four names
+in Vercel Project Settings → Environment Variables, separately for each target:
+
+| Variable | Production | Preview (all non-production branches) |
+| --- | --- | --- |
+| `VITE_SUPABASE_URL` | Production Supabase project HTTPS URL | Preview's selected Supabase project HTTPS URL |
+| `VITE_SUPABASE_ANON_KEY` | That project's public publishable/anon key | The matching project's public publishable/anon key |
+| `VITE_API_BASE_URL` | Production Railway backend HTTPS origin, no `/api` | Compatible preview backend HTTPS origin, no `/api` |
+| `VITE_DEMO_MODE` | `false` | `false` |
+
+The configured Supabase project URL is `https://kodylgzaqdyaptrdfidn.supabase.co`.
+If sharing this auth project, use its public publishable key in both scopes.
+Never use a Supabase service-role/secret key, provider key or database URL in Vite.
+The documented production backend is `https://fieldtrace-production.up.railway.app`;
+this does **not** establish that its older code/schema supports the current feature branch.
+Use an isolated compatible backend for preview until that compatibility is verified.
+
+For **branch-specific Preview overrides**, select Preview and the exact branch
+`feat/scanned-manua-l-ocr-coverage`. Overrides take precedence over general Preview
+values. Check all four variables for stale/blank overrides; remove obsolete overrides
+or replace them with matching project/backend values. Keep general Preview defaults
+for future branches. Do not change Production values to fix a Preview deployment.
+
+Keep Root Directory `frontend`, framework Vite and the repository build command
+`npm run build:hosted`. The checked-in `frontend/vercel.json` selects it. Remove
+conflicting dashboard build-command overrides. The hosted check rejects missing live
+auth/API configuration and known private Supabase key formats; it prints names and
+guidance, never values. It does not verify key validity, CORS or backend compatibility.
+`npm run build` remains available locally with the Vite `/api` proxy; it also enforces
+the hosted check when `VERCEL=1`. Run `npm run build:hosted` locally to validate
+hosted configuration from the effective production-mode Vite environment files/variables.
+
+Demo mode defaults to false. Only explicit `VITE_DEMO_MODE=true` makes an entire
+build replay-only; do not use that to bypass failed live configuration. The intentional
+`/?demo=true` labeled public replay remains available without live API/provider calls.
+Missing live configuration never redirects users into replay.
+
+After changing values, create a **new Preview build** of the correct branch/commit.
+Existing static deployments retain their previous values. Confirm the deployment's
+branch, commit and environment before testing; a Preview build does not update the
+older Production deployment from main. See [Vercel environment scopes](https://vercel.com/docs/environment-variables)
+and [environment management](https://vercel.com/docs/environment-variables/manage-across-environments).
+
+### Preview backend and auth checklist
+
+- The target Railway backend needs compatible auth/session/OCR code and the additive
+  migrations documented below. Frontend configuration cannot upgrade backend code
+  or schema. Do not migrate or replace production merely to enable a preview.
+- On that backend, `SUPABASE_URL` must match the frontend project and
+  `SUPABASE_JWT_AUDIENCE=authenticated`. No service-role key is required.
+- Add the exact Preview origin to that backend's `CORS_ALLOWED_ORIGINS`, preserving
+  existing authorized origins. No wildcard; CORS is not authentication.
+- In Supabase Auth URL Configuration, retain the production Site URL and add the
+  intended preview origin as an allowed redirect URL (signup uses the current origin).
+  Preserve localhost redirects for local development. Do not disable confirmation.
+- Test signup/login, My Sessions, reopen and confirmation on the preview. Verify
+  the browser's API requests target the intended backend. Do not expose tokens in logs.
+- Production remains unchanged until a separate reviewed release is authorized.
+
 
 ## Part C — Verification after authorized deployment
 

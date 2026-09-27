@@ -699,6 +699,8 @@ test('confirmation response unlocks immediately even if a subsequent equipment r
  await page.getByRole('button',{name:'Detect equipment / read nameplate'}).click()
  await expect(page.getByText('DETECTED EQUIPMENT',{exact:true})).toBeVisible()
  await expect(page.getByRole('button',{name:'Run troubleshooting'})).toBeDisabled()
+ // Wait for identification's refresh to finish before simulating a later stale read.
+ await expect(page.getByRole('button',{name:'Confirm equipment',exact:true})).toBeEnabled()
  let staleReads=0
  await page.route(`**/api/sessions/${sid}/equipment`,route=>{staleReads++;return route.fulfill({json:{...replay.acs880.equipment,session_id:sid,confirmation_status:'SUGGESTED',confirmed_equipment_id:null,confirmed_model:null}})})
  await page.getByRole('button',{name:'Confirm equipment',exact:true}).click()

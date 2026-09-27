@@ -1,9 +1,11 @@
+import {liveConfigErrors,localHost} from './deploymentConfig'
 import {createClient} from '@supabase/supabase-js'
 
 const url=import.meta.env.VITE_SUPABASE_URL?.trim()
 const key=import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
+export const configurationErrors=liveConfigErrors({...import.meta.env,VITE_DEMO_MODE:'false'},!localHost(window.location.hostname))
 // Only a public publishable/anon key belongs in this browser bundle.
-export const supabase=url&&key?createClient(url,key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}):null
+export const supabase=!configurationErrors.length&&url&&key?createClient(url,key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}):null
 
 export async function authHeaders(headers?:HeadersInit){
   const result=new Headers(headers)

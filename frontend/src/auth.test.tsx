@@ -2,12 +2,12 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest'
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react'
 import AuthShell from './AuthShell'
 
-const mocks=vi.hoisted(()=>({getSession:vi.fn(),signInWithPassword:vi.fn(),signUp:vi.fn(),signOut:vi.fn(),onAuthStateChange:vi.fn()}))
-vi.mock('./auth',()=>({supabase:{auth:mocks}}))
+const mocks=vi.hoisted(()=>({configured:true,getSession:vi.fn(),signInWithPassword:vi.fn(),signUp:vi.fn(),signOut:vi.fn(),onAuthStateChange:vi.fn()}))
+vi.mock('./auth',()=>({configurationErrors:['VITE_SUPABASE_URL must be configured.'],get supabase(){return mocks.configured?{auth:mocks}:null}}))
 vi.mock('./App',()=>({default:({account}:{account:React.ReactNode})=><div>Saved workspace{account}</div>}))
 const session={access_token:'test-only',user:{id:'user-a',email:'a@example.test'}}
 beforeEach(()=>{
- vi.clearAllMocks();sessionStorage.clear()
+ mocks.configured=true;vi.clearAllMocks();sessionStorage.clear()
  mocks.getSession.mockResolvedValue({data:{session:null},error:null})
  mocks.onAuthStateChange.mockReturnValue({data:{subscription:{unsubscribe:vi.fn()}}})
 })
@@ -49,4 +49,15 @@ it('auth event replacing an account takes priority over stale restore',async()=>
  mocks.getSession.mockReturnValue(new Promise(r=>{resolve=r}));render(<AuthShell/>)
  callback('SIGNED_IN',session);resolve({data:{session:null},error:null})
  await waitFor(()=>expect(screen.queryByText('Saved workspace')).toBeTruthy())
+})
+
+it('missing config blocks live login and explains rebuild without forcing replay',async()=>{
+ mocks.configured=false;render(<AuthShell/>)
+ const alert=await screen.findByRole('alert')
+ expect(alert.textContent).toContain('VITE_SUPABASE_URL')
+ expect(alert.textContent).toContain('rebuild')
+ expect(screen.queryByLabelText('Email')).toBeNull()
+ expect(screen.queryByText('Saved workspace')).toBeNull()
+ expect(screen.getByRole('link',{name:'View the labeled recorded demo'}).getAttribute('href')).toBe('/?demo=true')
+ expect(mocks.getSession).not.toHaveBeenCalled()
 })
