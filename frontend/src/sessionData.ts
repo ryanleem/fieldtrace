@@ -21,7 +21,8 @@ export function normalizeDraft(value:unknown){
  const r=object(value,'draft'),m=object(r.measurement,'measurement')
  const entry=string(r.entry_type,'entry_type','answer')
  if(!['answer','check','measurement'].includes(entry))throw new SessionDataError('entry_type')
- return {...r,model:string(r.model,'model'),symptom:string(r.symptom,'symptom'),followup:string(r.followup,'followup'),entry_type:entry,
+ // Legacy draft choices share the new text-entry UI; persisted history stays intact.
+ return {...r,model:string(r.model,'model'),symptom:string(r.symptom,'symptom'),followup:string(r.followup,'followup'),entry_type:entry==='measurement'?'measurement':'answer',
  measurement:{name:string(m.name,'measurement.name','temperature'),value:string(m.value,'measurement.value'),unit:string(m.unit,'measurement.unit','C'),location:string(m.location,'measurement.location')}}
 }
 export function normalizeEquipment(value:unknown){

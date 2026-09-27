@@ -63,3 +63,11 @@ it('creation boundary uses creation-specific wording',()=>{
  render(<WorkspaceErrorBoundary operation="create" onRetry={()=>{}} onBack={()=>{}}><Broken/></WorkspaceErrorBoundary>)
  expect(screen.getByRole('heading').textContent).toBe('We couldn’t start a new troubleshooting session.')
 })
+
+
+it.each(['answer','check'])('maps legacy %s drafts to Check / Observation without erasing history',entry_type=>{
+ const draft=normalizeDraft({entry_type,followup:'The fan is running.'})
+ expect(draft.entry_type).toBe('answer');expect(draft.followup).toBe('The fan is running.')
+ const trace=normalizeTrace({follow_up_answers:['Old answer'],checks_completed:['Old completed check'],retrieved_evidence_history:[{run_id:'old-run',status:'insufficient_evidence'}]})
+ expect(trace.follow_up_answers).toEqual(['Old answer']);expect(trace.checks_completed).toEqual(['Old completed check']);expect(trace.retrieved_evidence_history).toHaveLength(1)
+})

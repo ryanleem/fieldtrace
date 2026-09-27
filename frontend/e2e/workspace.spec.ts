@@ -159,7 +159,7 @@ test('weak evidence stays a normal LOW workflow without a forced diagnosis',asyn
  await mockApi(page,'weak');await page.goto('/');await confirm(page)
  await page.getByLabel('What problem are you seeing?').fill('Something seems wrong')
  await page.getByRole('button',{name:'Run troubleshooting'}).click()
- await expect(page.getByRole('heading',{name:'We need more information before narrowing this down.'})).toBeVisible()
+ await expect(page.getByRole('heading',{name:'A specific failure is not yet confirmed.'})).toBeVisible()
  await expect(page.getByText('LOW',{exact:true})).toBeVisible()
  await expect(page.locator('.cause-title')).toHaveCount(0)
  await expect(page.locator('.next-question')).toContainText(replay.weak.trace.result.next_question)
@@ -497,7 +497,7 @@ test('equipment photos stay in step one and vague symptoms are excluded from ide
  await expect(page.getByRole('button',{name:'Re-detect / correct equipment'})).toHaveCount(0)
 })
 
-for(const kind of ['answer','check','measurement'])test(`follow-up ${kind} is recorded, refreshed and explains unchanged guidance`,async({page})=>{
+for(const kind of ['answer','measurement'])test(`follow-up ${kind} is recorded, refreshed and explains unchanged guidance`,async({page})=>{
  const mock=await mockApi(page);await page.goto('/');await confirm(page)
  await page.getByLabel('What problem are you seeing?').fill('Fault 5091')
  await page.getByRole('button',{name:'Run troubleshooting'}).click()
@@ -803,4 +803,41 @@ test('LOW result exposes relevant documentary sources without a diagnosis',async
  await page.locator('.source-list .source-row').first().click()
  await expect(page.getByRole('dialog')).toContainText('Exact cited chunk')
  await expect(page.locator('.excerpt')).toContainText('5091')
+})
+
+
+test('observation-only result shows verified checks and sources without a diagnosis',async({page})=>{
+ const mock=await mockApi(page);await page.goto('/');await confirm(page)
+ const source=replay.acs880.trace.result.sources[0]
+ await page.route('**/troubleshooting/run',r=>{
+  mock.trace.result={...replay.weak.trace.result,status:'insufficient_evidence',primary_cause:null,alternative_causes:[],confidence:'LOW',
+   message:'A specific failure cannot yet be confirmed.',sources:[source],technical_claims:[],
+   recommended_actions:[{action:'Review the documented enclosure inspection prerequisites.',citation_chunk_ids:[source.chunk_id]}],next_question:'What else have you observed?'}
+  mock.trace.retrieved_evidence_history.push({run_id:rid,status:'insufficient_evidence',created_at:new Date().toISOString(),sources:[source]})
+  return r.fulfill({json:mock.trace})
+ })
+ await page.getByLabel('What problem are you seeing?').fill('The cover is missing')
+ await page.getByRole('button',{name:'Run troubleshooting'}).click()
+ await expect(page.getByRole('heading',{name:'A specific failure is not yet confirmed.'})).toBeVisible()
+ await expect(page.getByText('Review the documented enclosure inspection prerequisites.')).toBeVisible()
+ await expect(page.locator('.source-list .source-row')).toHaveCount(1)
+ await expect(page.locator('.cause-title')).toHaveCount(0)
+ await expect(page.getByLabel('Entry type').locator('option')).toHaveText(['Check / Observation','Measurement'])
+ await expect(page.getByText('Add something you checked, noticed, or learned.')).toBeVisible()
+ await page.getByLabel('Entry type').selectOption('measurement')
+ await expect(page.getByText('Add a numeric reading from the equipment.')).toBeVisible()
+})
+
+for(const legacy of ['answer','check'])test(`reopens legacy ${legacy} draft and keeps both input histories`,async({page})=>{
+ const mock=await mockApi(page);await page.goto('/');await confirm(page)
+ await page.getByLabel('What problem are you seeing?').fill('The cover is missing');await page.getByRole('button',{name:'Run troubleshooting'}).click()
+ await expect(page.getByRole('heading',{name:'Why this matches'})).toBeVisible()
+ mock.trace.follow_up_answers=['Old answer retained'];mock.trace.checks_completed=['Old completed check retained']
+ await page.route('**/draft',r=>r.fulfill({json:{model:'ACS880-01',symptom:'The cover is missing',followup:'The fan is running.',entry_type:legacy,measurement:{name:'temperature',value:'',unit:'C',location:''}}}))
+ await page.reload()
+ await expect(page.getByLabel('Entry type')).toHaveValue('answer')
+ await expect(page.getByLabel('Update for this session')).toHaveValue('The fan is running.')
+ await expect(page.locator('.history')).toContainText('Old answer retained')
+ await expect(page.locator('.history')).toContainText('Old completed check retained')
+ expect(mock.calls.filter(c=>c.path.endsWith('/run'))).toHaveLength(1)
 })

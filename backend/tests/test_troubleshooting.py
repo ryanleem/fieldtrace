@@ -114,23 +114,23 @@ def test_admitted_gap_primary_still_uses_only_one_retry():
     assert len(p.audit['attempts'])==2
 
 
-def test_weak_evidence_skips_candidate_and_asks_targeted_question():
+def test_weak_evidence_allows_verified_guidance_without_diagnosis():
     llm = MockLLM(strength='WEAK')
     _, result = pipeline(llm)
     assert result['primary_cause'] is None and result['confidence'] == 'LOW'
     assert 'temperature' in result['next_question']
-    assert not any(s == 'candidate' for s, _ in llm.calls)
+    assert any(s == 'candidate' and p['guidance_only'] for s, p in llm.calls)
+    assert result['recommended_actions']
+    assert result['technical_claims'] == []
 
 
-def test_weak_evidence_does_not_call_optional_conflict_provider():
-    class FailConflict(MockLLM):
-        def complete(self, stage, payload):
-            assert stage == 'review'
-            return super().complete(stage, payload)
-    llm = FailConflict(strength='WEAK')
+def test_weak_evidence_still_checks_conflicts_before_advising():
+    llm = MockLLM(strength='WEAK', relationship='DIFFERENT_APPLICABILITY')
     _, result = pipeline(llm, rows=[evidence(1), evidence(2), evidence(3)])
     assert result['status'] == 'insufficient_evidence' and result['confidence'] == 'LOW'
-    assert [stage for stage, _ in llm.calls] == ['review']
+    assert result['recommended_actions'] == []
+    assert any(stage == 'conflict' for stage, _ in llm.calls)
+    assert 'manual revision' in result['next_question']
 
 
 @pytest.mark.corpus
@@ -509,10 +509,12 @@ def test_completed_result_becomes_stale_and_new_equipment_resets_inputs(troubles
 def test_low_evidence_exposes_only_reviewed_relevant_sources(relevance, expected):
     class ReviewOnly(MockLLM):
         def complete(self, stage, payload):
-            assert stage == 'review'
             response = super().complete(stage, payload)
-            for chunk in response['output']['chunks']:
-                chunk['relevance'] = relevance
+            if stage == 'review':
+                for chunk in response['output']['chunks']:
+                    chunk['relevance'] = relevance
+            elif stage == 'candidate':
+                response['output'].update(primary_cause=None, alternative_causes=[], technical_claims=[], recommended_actions=[])
             return response
     row = evidence()
     _, result = pipeline(ReviewOnly(strength='WEAK'), rows=[row])
@@ -531,3 +533,63 @@ def test_unsupported_primary_keeps_relevant_documents_without_publishing_claim()
     assert result['primary_cause'] is None and result['confidence'] == 'LOW'
     assert result['sources'][0]['chunk_id'] == str(row.chunk_id)
     assert result['technical_claims'] == []
+
+
+@pytest.mark.parametrize('observation', [
+    'The cover is missing', 'It smells burnt', 'There is discoloration',
+    'It is making a strange noise', "It won't start", 'The equipment looks damaged',
+    'Something is loose'])
+@pytest.mark.parametrize('strength', ['WEAK', 'STRONG'])
+def test_observation_only_retrieves_and_returns_verified_guidance(observation, strength):
+    row = evidence().model_copy(update={'chunk_text': 'Inspect the enclosure according to the safety instructions before maintenance.'})
+    action = 'Inspect the enclosure according to the safety instructions before maintenance.'
+    def candidate(output, cid):
+        output.update(primary_cause=None, alternative_causes=[], technical_claims=[],
+                      recommended_actions=[dict(action=action, citation_chunk_ids=[cid])])
+    llm = MockLLM(strength=strength, candidate_extra=candidate)
+    ctx = context(); ctx['inputs']['reported_symptoms'] = [observation]
+    plans = []
+    def retrieve(plan): plans.append(plan); return [row]
+    p = Pipeline(llm, Embedder(), Settings(), retrieve)
+    result = p.execute(ctx)
+    assert len(plans) == 1 and observation in plans[0]['semantic_query']
+    assert 'ACS880' in plans[0]['semantic_query'] and 'Visible dust' in plans[0]['semantic_query']
+    assert result['status'] == 'insufficient_evidence' and result['confidence'] == 'LOW'
+    assert result['primary_cause'] is None and not result['alternative_causes']
+    assert result['sources'][0]['chunk_id'] == str(row.chunk_id)
+    assert result['recommended_actions'][0]['action'] == action
+    assert result['next_question'].endswith('?')
+    assert any(v['key']=='action:0' and v['status']=='SUPPORTED' for v in p.audit['attempts'][0]['verifications'])
+
+
+def test_observation_guidance_blocks_unsupported_actions_and_reverifies_partial():
+    bad = 'Missing cover caused an electrical fault.'
+    broad = 'Inspect everything immediately.'
+    narrow = 'Review the documented enclosure inspection prerequisites.'
+    def candidate(output, cid):
+        output.update(primary_cause=None, alternative_causes=[], technical_claims=[],
+            recommended_actions=[dict(action=bad,citation_chunk_ids=[cid]),dict(action=broad,citation_chunk_ids=[cid])])
+    p, result = pipeline(MockLLM(strength='WEAK',candidate_extra=candidate,unsupported=[bad],partial={broad:narrow}))
+    assert [a['action'] for a in result['recommended_actions']] == [narrow]
+    assert result['primary_cause'] is None and result['confidence']=='LOW'
+    assert [v['status'] for v in p.audit['attempts'][0]['verifications']] == ['UNSUPPORTED','PARTIAL','SUPPORTED']
+
+
+@pytest.mark.integration
+def test_check_observation_preserves_legacy_inputs_and_followup_history(troubleshooting_db):
+    engine, settings, sid, embedder = troubleshooting_db
+    service.update(engine,sid,TroubleshootingInput(reported_symptoms=['The cover is missing'],
+        answer='Old answer retained',checks_completed=['Old completed check retained']))
+    service.run(engine,sid,MockLLM(strength='WEAK'),embedder,settings,lambda _: [evidence()])
+    observation='STO wiring has not been checked yet.'
+    service.update(engine,sid,TroubleshootingInput(answer=observation,
+        measurements=[dict(name='XSTO voltage',value='24',unit='V',location='XSTO')]))
+    plans=[]
+    def retrieve(plan): plans.append(plan); return [evidence()]
+    service.run(engine,sid,MockLLM(strength='WEAK'),embedder,settings,retrieve)
+    reopened=service.get_state(engine,sid)
+    assert reopened['follow_up_answers']==['Old answer retained',observation]
+    assert reopened['checks_completed']==['Old completed check retained']
+    assert reopened['measurements'][0]['value']=='24'
+    assert observation in plans[0]['semantic_query']
+    assert len(reopened['retrieved_evidence_history'])==2
