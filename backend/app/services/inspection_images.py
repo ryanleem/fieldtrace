@@ -170,8 +170,6 @@ def analyze_image(engine, session_id, image_id, provider, settings=None):
     with Session(engine) as session, session.begin():
         owner = load_session(session, session_id, lock=True)
         record = load_image(session, session_id, image_id)
-        if record.analysis_status in {'completed', 'no_clear_abnormality'}:
-            return analysis_result(session, record)
         now = datetime.now(timezone.utc)
         # A bounded lease permits explicit retry after process interruption.
         started = record.analysis_started_at
@@ -190,6 +188,12 @@ def analyze_image(engine, session_id, image_id, provider, settings=None):
                        view_label=record.view_label, user_note=record.user_note)
         record.analysis_status, record.analysis_token, record.analysis_started_at = 'analyzing', token, now
         record.analysis_error = None
+        # An explicit inspection supersedes this image's previous observations.
+        # Clear them with the lease so failure cannot leave stale findings active.
+        session.execute(delete(VisualFinding).where(VisualFinding.image_id == image_id,
+                                                    VisualFinding.session_id == session_id))
+        record.image_summary = None
+        rebuild_aggregates(session, session_id)
         path = image_path(settings, record)
     try:
         data = path.read_bytes()

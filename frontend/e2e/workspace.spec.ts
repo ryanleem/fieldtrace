@@ -752,3 +752,55 @@ test('family-only candidate explains the gate and permits a confirmable selected
  await page.getByRole('button',{name:'Confirm equipment',exact:true}).click()
  await expect(page.getByText('CONFIRMED EQUIPMENT',{exact:true})).toBeVisible()
 })
+
+
+for(const status of ['pending','completed','no_clear_abnormality','failed','analyzing'])test(`saved photo inspection gate: ${status}`,async({page})=>{
+ const mock=await mockApi(page)
+ mock.v.uploaded_images.push({id:'photo-retry',equipment_id:'abb-acs880-01',view_label:'front',original_filename:'front.jpg',analysis_status:status})
+ await page.goto('/');await confirm(page)
+ const inspect=page.getByRole('button',{name:'Inspect / Analyze',exact:true})
+ if(status==='analyzing'){await expect(inspect).toBeDisabled();return}
+ await expect(inspect).toBeEnabled()
+ if(['completed','no_clear_abnormality'].includes(status))await expect(page.getByText('Analysis complete',{exact:true})).toBeVisible()
+ let release!:()=>void
+ const gate=new Promise<void>(r=>release=r)
+ await page.route('**/images/photo-retry/analyze',async route=>{await gate;await route.fallback()})
+ await inspect.evaluate((b:HTMLButtonElement)=>{b.click();b.click()})
+ await expect(inspect).toBeDisabled()
+ release()
+ await expect(inspect).toBeEnabled()
+ await expect(page.getByText('Analysis complete',{exact:true})).toBeVisible()
+ await expect(page.locator('.finding')).toHaveCount(1)
+ await expect(page.locator('.finding')).toContainText('Evidence: front photo')
+ expect(mock.calls.filter(c=>c.path.endsWith('/analyze'))).toHaveLength(1)
+ await inspect.click()
+ await expect(inspect).toBeEnabled()
+ await expect(page.locator('.finding')).toHaveCount(1)
+ expect(mock.calls.filter(c=>c.path.endsWith('/analyze'))).toHaveLength(2)
+})
+
+test('saved completed photo from another equipment stays blocked',async({page})=>{
+ const mock=await mockApi(page)
+ mock.v.uploaded_images.push({id:'previous-photo',equipment_id:'abb-acs580-01',view_label:'front',original_filename:'front.jpg',analysis_status:'completed'})
+ await page.goto('/');await confirm(page)
+ await expect(page.getByRole('button',{name:'Inspect / Analyze',exact:true})).toBeDisabled()
+ expect(mock.calls.some(c=>c.path.endsWith('/analyze'))).toBe(false)
+})
+
+test('LOW result exposes relevant documentary sources without a diagnosis',async({page})=>{
+ const mock=await mockApi(page,'weak')
+ await page.route('**/troubleshooting/run',async route=>{
+  mock.trace.result={...structuredClone(replay.weak.trace.result),sources:structuredClone(replay.acs880.trace.result.sources)}
+  mock.trace.retrieved_evidence_history.push({run_id:rid,status:'insufficient_evidence',created_at:new Date().toISOString(),sources:mock.trace.result.sources})
+  await route.fulfill({json:mock.trace})
+ })
+ await page.goto('/');await confirm(page)
+ await page.getByLabel('What problem are you seeing?').fill('Fault 5091; details unknown')
+ await page.getByRole('button',{name:'Run troubleshooting'}).click()
+ await expect(page.locator('.cause-title')).toHaveCount(0)
+ await expect(page.getByText('LOW',{exact:true})).toBeVisible()
+ await expect(page.locator('.source-list')).toContainText('A source alone does not establish a diagnosis')
+ await page.locator('.source-list .source-row').first().click()
+ await expect(page.getByRole('dialog')).toContainText('Exact cited chunk')
+ await expect(page.locator('.excerpt')).toContainText('5091')
+})

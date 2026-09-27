@@ -199,3 +199,15 @@ def test_removed_indexed_chunks_invalidates_previous_result(troubleshooting_db, 
     with Session(engine) as db, db.begin():
         db.execute(delete(DocumentChunk))
     assert service.get_state(engine, sid)['result']['status'] == 'stale'
+
+
+@pytest.mark.corpus
+def test_real_catalog_acs880_coverage_and_absent_drive_manuals():
+    from app.db.session import get_engine
+    with Session(get_engine()) as db:
+        for model, expected in [('abb-acs880-01', True), ('abb-acs580-01', False), ('abb-ach580-01', False)]:
+            equipment = db.get(Equipment, model)
+            assert equipment is not None
+            filters = dict(equipment_model=equipment.retrieval_model or None,
+                           equipment_family=equipment.retrieval_family)
+            assert indexed_manual_coverage(db, filters) is expected

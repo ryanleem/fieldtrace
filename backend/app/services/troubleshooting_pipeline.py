@@ -107,6 +107,7 @@ class Pipeline:
             self.audit['coverage'] = 'No indexed manual matches the confirmed equipment filters'
             return result
         refinement = None
+        reviewed_evidence = {}
         for attempt in range(2):
             plan = construct_query(context, self.embedder, refinement)
             rows = self.retriever(plan)
@@ -114,18 +115,28 @@ class Pipeline:
             audit = {'query': plan, 'evidence': list(evidence.values()), 'verifications': []}
             self.audit['attempts'].append(audit)
             if not evidence:
-                return insufficient(context)
+                answer = insufficient(context)
+                answer['sources'] = self.sources(reviewed_evidence, reviewed_evidence)
+                return answer
             review = self.call('review', {'context': context, 'evidence': list(evidence.values())})
             if len(review.chunks) != len(evidence) or {r.chunk_id for r in review.chunks} != set(evidence):
                 raise TroubleshootingUnavailable('Evidence review did not cover retrieved chunks')
             audit['review'] = review.model_dump()
             usable = {r.chunk_id: evidence[r.chunk_id] for r in review.chunks if r.relevance != 'NOT_RELEVANT'}
             relevant = [r for r in review.chunks if r.relevance == 'RELEVANT']
+            # Documentary context for review, not a verified causal claim. Keep
+            # only explicitly relevant passages, including from a prior retry.
+            for rating in review.chunks:
+                reviewed_evidence.pop(rating.chunk_id, None)
+                if rating.relevance == 'RELEVANT':
+                    reviewed_evidence[rating.chunk_id] = evidence[rating.chunk_id]
             # Weak evidence cannot support a candidate. Do not let a subsequent
             # optional conflict call turn this valid follow-up path into failure.
             if review.strength == 'WEAK' or not relevant:
                 audit['conflicts'] = []
-                return insufficient(context)
+                answer = insufficient(context)
+                answer['sources'] = self.sources(reviewed_evidence, reviewed_evidence)
+                return answer
             groups = defaultdict(list)
             for r in review.chunks:
                 if r.chunk_id in usable:
@@ -142,11 +153,6 @@ class Pipeline:
                 conflicts.append(relation.model_dump())
             audit['conflicts'] = conflicts
             unresolved = any(r['relationship'] in {'CONFLICTING', 'DIFFERENT_APPLICABILITY'} for r in conflicts)
-            if review.strength == 'WEAK' or not relevant:
-                answer = insufficient(context)
-                answer['conflicts'] = self.public_conflicts(conflicts, evidence)
-                answer['sources'] = self.sources(evidence, [cid for r in conflicts for cid in r['chunk_ids']])
-                return answer
             candidate = self.call('candidate', {'context': context, 'evidence': list(usable.values()),
                 'conflicts': conflicts, 'review': review.model_dump(), 'retry': bool(attempt)})
             audit['candidate'] = candidate.model_dump()
@@ -178,7 +184,9 @@ class Pipeline:
             return result
         answer = insufficient(context)
         answer['conflicts'] = self.public_conflicts(conflicts, evidence)
-        answer['sources'] = self.sources(evidence, [cid for r in conflicts for cid in r['chunk_ids']])
+        source_evidence = {**reviewed_evidence, **evidence}
+        answer['sources'] = self.sources(source_evidence, list(reviewed_evidence) +
+                                        [cid for r in conflicts for cid in r['chunk_ids']])
         return answer
 
     def filter_candidate(self, candidate, evidence, log, unresolved, context):
